@@ -1,6 +1,8 @@
 # CF-ETI-scRNA
 Single-cell RNA sequencing data analysis pipeline
 
+Author: Anson Wong, Hieu Nim, Mirana Ramialison
+
 ## Description
 Computational analyses of single-cell RNA-seq data from bronchoalveolar lavage of preschool cystic fibrosis receiving Elexacaftor-Texacaftor-Ivacaftor (ETI) therapy
 

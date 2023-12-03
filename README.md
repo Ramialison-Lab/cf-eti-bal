@@ -1,7 +1,7 @@
 # CF-ETI-scRNA
 Cell-hashing Single-cell RNA sequencing Data Analysis Pipeline
 
-Author: Anson Wong, Hieu Nim, Mirana Ramialison
+Developers: Anson Wong (main), Hieu T Nim (contributor), Ramialison Laboratory, Australian Regenerative Medicine Institute & Murdoch Children's Research Institute, Australia  
 
 ## Description
 Computational analyses of single-cell RNA-seq data from bronchoalveolar lavage (BAL) of preschool cystic fibrosis receiving Elexacaftor-Texacaftor-Ivacaftor (ETI) therapy.
@@ -12,8 +12,6 @@ For batch 1, ~110,000 cells from 10 hashed samples (each with a distinct Hashtag
 For batch 2, ~60,000 cells from 6 hashed samples were pooled to generate two captures.  
 QC and demultiplexing were carried out separately. Two batches were integrated into one dataset for clustering and downstream analysis.  
   
-Developers: Anson Wong (main), Hieu T Nim (contributor), Ramialison Laboratory, Australian Regenerative Medicine Institute & Murdoch Children's Research Institute, Australia  
-
 Code included in the "src" directory:  
 1. Shell script for cellranger multi  
 2. R script for QC, HTO demultiplexing and preprocessing with reference to Maksimovic et al. (2022)

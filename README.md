@@ -27,5 +27,5 @@ Code included in the "src" directory:
 Stoeckius, M., Zheng, S., Houck-Loomis, B. et al. Cell Hashing with barcoded antibodies enables multiplexing and doublet detection for single cell genomics. Genome Biol 19, 224 (2018).  
 Maksimovic, J. et al. Single-cell atlas of bronchoalveolar lavage from preschool cystic fibrosis reveals new cell phenotypes. bioRxiv 2022.2006.2017.496207 (2022).
 
-## Last updated:
+## Last updated
 03-Dec-2023

@@ -1,0 +1,734 @@
+---
+title: "Differential gene expression and pathway enrichment of macrophages"
+author: "Anson Wong"
+date: '03-Dec-2023'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load packages
+```{r}
+suppressPackageStartupMessages(library(Seurat))
+suppressPackageStartupMessages(library(SeuratData))
+suppressPackageStartupMessages(library(patchwork))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(scCustomize))
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(Polychrome))
+suppressPackageStartupMessages(library(viridis))
+suppressPackageStartupMessages(library(pals))
+suppressPackageStartupMessages(library(BiocStyle))
+suppressPackageStartupMessages(library(here))
+suppressPackageStartupMessages(library(glue))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(ggpubr))
+suppressPackageStartupMessages(library(DESeq2))
+suppressPackageStartupMessages(library(here))
+suppressPackageStartupMessages(library(ggrepel))
+suppressPackageStartupMessages(library(scales))
+suppressPackageStartupMessages(library(ggsci))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(topGO))
+suppressPackageStartupMessages(library(forcats))
+suppressPackageStartupMessages(library(gplots))
+suppressPackageStartupMessages(library(ReactomePA))
+suppressPackageStartupMessages(library(clusterProfiler))
+suppressPackageStartupMessages(library(speckle))
+suppressPackageStartupMessages(library(org.Hs.eg.db))
+suppressPackageStartupMessages(library(EnsDb.Hsapiens.v86))
+suppressPackageStartupMessages(library(ensembldb))
+suppressPackageStartupMessages(library(msigdbr))
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(rlist))
+suppressPackageStartupMessages(library(Homo.sapiens))
+suppressPackageStartupMessages(library(msigdbr))
+suppressPackageStartupMessages(library(dittoSeq))
+suppressPackageStartupMessages(library(circlize))
+suppressPackageStartupMessages(library(ComplexHeatmap))
+suppressPackageStartupMessages(library(tidyHeatmap))
+suppressPackageStartupMessages(library(ggplotify))
+suppressPackageStartupMessages(library(jpeg))
+suppressPackageStartupMessages(library(circlize))
+here()
+```
+
+Read and prepare object
+```{r}
+# read object
+seu <- readRDS('data/SCEs/G000323.clustered.Zilionis.HLCA.mac.integrated.subclustered.annotated.scored.SEU.rds')
+seu$predicted.ann_level_3 <- factor(seu$predicted.ann_level_3)
+seu$predicted.ann_level_4 <- factor(seu$predicted.ann_level_4)
+seu$predicted.ann_finest_level <- factor(seu$predicted.ann_finest_level)
+seu$Annotation <- factor(seu$Annotation)
+seu$HTO_HTODemux <- factor(seu$HTO_HTODemux,
+                           levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16)))
+# reorder Annotation
+seu$Annotation <- factor(seu$Annotation, levels=c("alvMΦ",
+                                                  "recMo/MΦ",
+                                                  "alvMΦ-proliferating",
+                                                  "alvMΦ-CCL",
+                                                  "alvMΦ-IFN",
+                                                  "alvMΦ-lipid",
+                                                  "alvMΦ-MT",
+                                                  "alvMΦ-T"))
+
+# add updated annotation
+Annotation2 <- setNames(c("AM",
+                         "RM",
+                         "AM-proliferating",
+                         "AM-CCL",
+                         "AM-IFN",
+                         "AM-lipid",
+                         "AM-MT",
+                         "AM-T"), levels(seu$Annotation))
+Annotation2 <- Annotation2[seu$Annotation]
+names(Annotation2) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Annotation2, col.name = "Annotation2")
+seu$Annotation2 <- factor(seu$Annotation2, 
+                          levels=c("AM",
+                                   "RM",
+                                   "AM-proliferating",
+                                   "AM-CCL",
+                                   "AM-IFN",
+                                   "AM-lipid",
+                                   "AM-MT",
+                                   "AM-T"))
+
+# add RM vs AM annotation
+Annotation3 <- setNames(c("AM",
+                          "RM",
+                          rep("AM",6)), levels(seu$Annotation))
+Annotation3 <- Annotation3[seu$Annotation]
+names(Annotation3) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Annotation3, col.name = "Annotation3")
+seu$Annotation3 <- factor(seu$Annotation3, 
+                          levels=c("AM",
+                                   "RM"))
+
+# add Condition to metadata
+Condition <- setNames(c(rep("ETI-treated",4),
+                         rep("CF-untreated",4),
+                         rep("Healthy",2)),
+                       levels(seu$HTO_HTODemux))
+Condition <- Condition[seu$HTO_HTODemux]
+names(Condition) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Condition, col.name = "Condition")
+seu$Condition <- factor(seu$Condition,
+                        levels=c("ETI-treated", "CF-untreated","Healthy"))
+
+# add Subject to metadata
+seu$HTO_HTODemux <- factor(seu$HTO_HTODemux,
+                           levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16)))
+
+Subject <- setNames(c("ETI1","ETI1",
+                      "ETI2","ETI2",
+                      "UT1","UT1",
+                      "UT2","UT2",
+                      "HC1","HC2"),levels(seu$HTO_HTODemux))
+
+Subject <- Subject[seu$HTO_HTODemux]
+names(Subject) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Subject, col.name = "Subject")
+seu$Subject <- factor(seu$Subject,
+                          levels=c("ETI1","ETI2",
+                                   "UT1","UT2",
+                                   "HC1","HC2"))
+
+# add Sample to metadata
+Sample <- setNames(c("M1C188_T1","M1C188_T2",
+                      "M1C160_T1","M1C160_T2",
+                      "M1C170_T1","M1C170_T2",
+                      "M1C176_T1","M1C176_T2",
+                      "M1N092","M1N075"),levels(seu$HTO_HTODemux))
+
+Sample <- Sample[seu$HTO_HTODemux]
+names(Sample) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Sample, col.name = "Sample")
+seu$Sample <- factor(seu$Sample,
+                          levels=c("M1C188_T1","M1C188_T2",
+                      "M1C160_T1","M1C160_T2",
+                      "M1C170_T1","M1C170_T2",
+                      "M1C176_T1","M1C176_T2",
+                      "M1N092","M1N075"))
+
+# add Timepoint to metadata
+Timepoint <- setNames(c(rep(c("T1","T2"),4),
+                         rep("N/A",2)), levels(seu$HTO_HTODemux))
+Timepoint <- Timepoint[seu$HTO_HTODemux]
+names(Timepoint) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Timepoint, col.name = "Timepoint")
+seu$Timepoint <- factor(seu$Timepoint,
+                             levels=c("T1","T2","N/A"))
+
+```
+
+Plot number of macrophage
+```{r}
+d <- data.frame(HTO_HTODemux=factor(levels(seu$HTO_HTODemux),
+                                    levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16))),
+                cell.counts=c(6909,9056,1922,2984,8696,14243,2845,3767,9326,7704),
+                monocyte.macrophage.counts=summary(seu$HTO_HTODemux),
+                RM.counts = tapply(seu$HTO_HTODemux,seu$Annotation, summary)[[1]],
+                AM.counts = tapply(s2$HTO_HTODemux,s2$predicted.ann_level_2, summary)[[1]],
+                Sample=factor(c("M1C188","M1C188B","M1C160 (1)", "M1C160F","M1C170C","M1C170D","M1C176","M1C176C","M1N092","M1N075"),
+                              levels=c("M1C188","M1C188B","M1C160 (1)","M1C160F","M1C170C","M1C170D","M1C176","M1C176C","M1N092","M1N075")))
+
+
+ggplot(d, aes(x=Sample,y=monocyte.macrophage.counts)) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  geom_text(aes(label = monocyte.macrophage.counts, vjust=-1)) +
+  theme(axis.text.x = element_text(angle = 45,vjust=0.5,hjust=0.5, size=12))
+
+ggplot(d, aes(x=Sample,y=cell.counts)) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  geom_text(aes(label = cell.counts, vjust=-1)) +
+  theme(axis.text.x = element_text(angle = 45,vjust=0.5,hjust=0.5, size=12))
+
+
+s2 <- subset(seu, Annotation != "recMo/MΦ")
+
+```
+
+Visualize UMAP
+```{r}
+p1 <- DimPlot(seu, cols = colours, group.by = "integrated_snn_res.0.3", split.by = "condition1")
+p2 <- DimPlot(seu, cols = colours, group.by = "integrated_snn_res.0.4", split.by = "condition1")
+p3 <- DimPlot(seu, cols = colours, group.by = "integrated_snn_res.0.5", split.by = "condition1")
+p1/p2/p3
+# ggsave(plot = last_plot(), filename = "macrophage_UMAP.230611.jpeg",
+#        height=10, width=10)
+colours <- c(brewer.paired(12), rev(brewer.accent(8)), rev(brewer.dark2(8)), brewer.set2(8))
+
+seu@meta.data %>% 
+  ggplot(aes(x = integrated_snn_res.0.5, fill = condition1)) +
+  geom_bar() +
+  geom_text(aes(label = ..count..), stat = "count",
+            position=position_stack(vjust = 0.5), colour = "black", size = 2) +
+  ggtitle("Number of cells in each condition\n") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+        plot.title=element_text(hjust=0.5, face="bold", size=14)) +
+  scale_fill_manual(values = colours)
+
+```
+
+Subset macrophage
+```{r}
+celltype <- "RM"
+cell <- subset(seu, Annotation3 == "RM")
+
+# most updated run: 230906
+dirName <- here("data", "DE", celltype)
+if(!dir.exists(dirName)) {
+  dir.create(dirName, recursive = TRUE)
+}
+Idents(cell) <- "condition3"
+
+```
+
+Normalize data (necessary before DE!)
+```{r}
+DefaultAssay(cell) <- "RNA"
+cell <- NormalizeData(cell)
+```
+
+Change comparison here
+```{r}
+# *** change here ***
+test <- "CF_treated_t2"
+control <- "CF_treated_t1"
+compare <- glue(test,"_vs_",control)
+outDIR <- here("data", "DE", celltype, compare)
+if(!dir.exists(outDIR)) {
+  dir.create(glue(outDIR, "/DEG"), recursive = TRUE)
+  dir.create(glue(outDIR, "/Reactome"), recursive = TRUE)
+  dir.create(glue(outDIR, "/WikiPathway"), recursive = TRUE)
+  dir.create(glue(outDIR, "/GO_CC"), recursive = TRUE)
+  dir.create(glue(outDIR, "/GO_BP"), recursive = TRUE)
+  dir.create(glue(outDIR, "/GO_MF"), recursive = TRUE)
+}
+```
+
+DE
+```{r}
+# condition vs healthy
+deg <- FindMarkers(cell,
+                   ident.1=test, # condition
+                   ident.2=control, # healthy
+                   test.use="wilcox",
+                   logfc.threshold = 0,
+                   only.pos = FALSE)
+
+deg$gene <- rownames(deg)
+
+# get sig up- and down-regulated genes
+deg <- deg %>% dplyr::filter(p_val_adj < 0.05)
+
+up <- deg %>% dplyr::filter(p_val_adj < 0.05 & avg_log2FC>0) %>% dplyr::arrange(desc(avg_log2FC))
+down <- deg %>% dplyr::filter(p_val_adj < 0.05 & avg_log2FC<0) %>% dplyr::arrange(desc(avg_log2FC))
+
+# get ensemblDB
+#ensembl DB
+getCols <- setNames(c("SYMBOL","ENTREZID"),c("SYMBOL","ENTREZID"))
+
+genes <- data.frame(
+  lapply(getCols, function(column) {
+    mapIds(
+      x = org.Hs.eg.db,
+      keys = unique(deg$gene),
+      keytype = "SYMBOL",
+      column = column)
+  }),
+  row.names = unique(deg$gene))
+
+# perform pathway over-representation analysis
+# Reactome
+reactome.up <- enrichPathway(genes[up$gene,]$ENTREZID,
+                             pAdjustMethod = "fdr", readable=TRUE)
+reactome.up <- reactome.up@result
+
+reactome.down <- enrichPathway(genes[down$gene,]$ENTREZID,
+                               pAdjustMethod="fdr", readable=TRUE)
+reactome.down <- reactome.down@result
+
+reactome.all <- enrichPathway(genes[deg$gene,]$ENTREZID,
+                               pAdjustMethod="fdr", readable=TRUE)
+reactome.all <- reactome.all@result #%>% dplyr::mutate(Direction=rep("Down",nrow(reactome.all@result)))
+
+# WikiPathway
+wiki.up <- enrichWP(genes[up$gene,]$ENTREZID, organism = "Homo sapiens", pAdjustMethod="fdr")
+wiki.up <- setReadable(wiki.up, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+wiki.up <- wiki.up@result
+
+wiki.down <- enrichWP(genes[down$gene,]$ENTREZID, organism = "Homo sapiens", pAdjustMethod="fdr")
+wiki.down <- setReadable(wiki.down, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+wiki.down <- wiki.down@result
+
+wiki.all <- enrichWP(genes[deg$gene,]$ENTREZID, organism = "Homo sapiens", pAdjustMethod="fdr")
+wiki.all <- setReadable(wiki.all, OrgDb = org.Hs.eg.db, keyType="ENTREZID")
+wiki.all <- wiki.all@result
+
+# GO 
+go.up <- enrichGO(genes[up$gene,]$ENTREZID, OrgDb=org.Hs.eg.db, ont="ALL",
+                  pAdjustMethod = "BH", readable=TRUE)
+?
+barplot(wiki.up, showCategory=20) + scale_fill_viridis()
+
+go.up.cc <- go.up@result %>% dplyr::filter(ONTOLOGY == "CC")
+go.up.bp <- go.up@result %>% dplyr::filter(ONTOLOGY == "BP")
+go.up.mf <- go.up@result %>% dplyr::filter(ONTOLOGY == "MF")
+
+go.down <- enrichGO(genes[down$gene,]$ENTREZID, OrgDb=org.Hs.eg.db, ont="ALL",
+                    pAdjustMethod = "BH", readable=TRUE)
+go.down.cc <- go.down@result %>% dplyr::filter(ONTOLOGY == "CC")
+go.down.bp <- go.down@result %>% dplyr::filter(ONTOLOGY == "BP")
+go.down.mf <- go.down@result %>% dplyr::filter(ONTOLOGY == "MF")
+
+go.all <- enrichGO(genes[deg$gene,]$ENTREZID, OrgDb=org.Hs.eg.db, ont="ALL",
+                   pAdjustMethod = "BH", readable=TRUE)
+go.all.cc <- go.all@result %>% dplyr::filter(ONTOLOGY == "CC")
+go.all.bp <- go.all@result %>% dplyr::filter(ONTOLOGY == "BP")
+go.all.mf <- go.all@result %>% dplyr::filter(ONTOLOGY == "MF")
+
+```
+
+Write results
+```{r}
+# DEGs
+out <- glue(outDIR, "/DEG/")
+
+write.csv(up %>%
+            dplyr::relocate(gene),
+            file = glue(out, "{celltype}.{compare}.DEG-up.csv"),
+            row.names = FALSE)
+write.csv(down %>%
+            dplyr::relocate(gene),
+            file = glue(out, "{celltype}.{compare}.DEG-down.csv"),
+            row.names = FALSE)
+write.csv(deg %>%
+            dplyr::relocate(gene),
+            file = glue(out, "{celltype}.{compare}.DEG-all.csv"),
+            row.names = FALSE)
+  
+# Reactome
+out <- glue(outDIR, "/Reactome/")
+reactome.up %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::arrange(p.adjust) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.REACTOME-up.csv")))
+
+reactome.down %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::arrange(p.adjust) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.REACTOME-down.csv")))
+
+reactome.all %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::arrange(p.adjust) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.REACTOME-all.csv")))
+
+# WikiPathway
+out <- glue(outDIR, "/WikiPathway/")
+wiki.up %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.WikiPathway-up.csv")))
+
+wiki.down %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.WikiPathway-down.csv")))
+
+wiki.all %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.WikiPathway-all.csv")))
+
+# GO
+# CC
+out <- glue(outDIR, "/GO_CC/")
+go.up.cc %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_CC-up.csv")))
+
+go.down.cc %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_CC-down.csv")))
+
+go.all.cc %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_CC-all.csv")))
+
+# BP
+out <- glue(outDIR, "/GO_BP/")
+go.up.bp %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_BP-up.csv")))
+
+go.down.bp %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_BP-down.csv")))
+
+go.all.bp %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_BP-all.csv")))
+
+# MF
+out <- glue(outDIR, "/GO_MF/")
+go.up.mf %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_MF-up.csv")))
+
+go.down.mf %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_MF-down.csv")))
+
+go.all.mf %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::select(Pathway, ID, Count, geneID, pvalue, p.adjust, qvalue) %>%
+  # slice_head(n = 50) %>%
+  write_csv(file = here(glue(out, "{celltype}.{compare}.GO_MF-all.csv")))
+
+```
+
+Prepare object for heatmap
+```{r}
+seu <- readRDS(here("data/SCEs/G000323.clustered.Zilionis.HLCA.mac.integrated.subclustered.annotated.scored.SEU.rds"))
+
+# add subject to metadata
+seu$HTO_HTODemux <- factor(seu$HTO_HTODemux,
+                           levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16)))
+
+Subject <- setNames(c("ETI1","ETI1",
+                      "ETI2","ETI2",
+                      "UT1","UT1",
+                      "UT2","UT2",
+                      "HC1","HC2"),levels(seu$HTO_HTODemux))
+
+Subject <- Subject[seu$HTO_HTODemux]
+names(Subject) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Subject, col.name = "Subject")
+seu$Subject <- factor(seu$Subject,
+                          levels=c("ETI1","ETI2",
+                                   "UT1","UT2",
+                                   "HC1","HC2"))
+
+# add Sample to metadata
+Sample <- setNames(c("M1C188_T1","M1C188_T2",
+                      "M1C160_T1","M1C160_T2",
+                      "M1C170_T1","M1C170_T2",
+                      "M1C176_T1","M1C176_T2",
+                      "M1N092","M1N075"),levels(seu$HTO_HTODemux))
+
+Sample <- Sample[seu$HTO_HTODemux]
+names(Sample) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Sample, col.name = "Sample")
+seu$Sample <- factor(seu$Sample,
+                          levels=c("M1C188_T1","M1C188_T2",
+                      "M1C160_T1","M1C160_T2",
+                      "M1C170_T1","M1C170_T2",
+                      "M1C176_T1","M1C176_T2",
+                      "M1N092","M1N075"))
+
+# add condition1 to metadata
+condition1 <- setNames(c(rep("CF",8), # Trikafta indiv as treated
+                         rep("Healthy",2)), levels(seu$HTO_HTODemux))
+condition1 <- condition1[seu$HTO_HTODemux]
+names(condition1) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = condition1, col.name = "condition1")
+seu$condition1 <- factor(seu$condition1)
+
+# add condition2
+condition2 <- setNames(c(rep("ETI-treated",4), # Trikafta indiv as treated
+                         rep("CF-untreated",4),
+                         rep("Healthy",2)), levels(seu$HTO_HTODemux))
+condition2 <- condition2[seu$HTO_HTODemux]
+names(condition2) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = condition2, col.name = "condition2")
+seu$condition2 <- factor(seu$condition2)
+
+# add condition3
+condition3 <- setNames(c(rep(c("ETI-treated_t1","ETI-treated_t2"),2),
+                         rep(c("CF-untreated_t1","CF-untreated_t2"),2),
+                         rep("Healthy",2)), levels(seu$HTO_HTODemux))
+condition3 <- condition3[seu$HTO_HTODemux]
+names(condition3) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = condition3, col.name = "condition3")
+seu$condition3 <- factor(seu$condition3)
+
+# add Timepoint to metadata
+Timepoint <- setNames(c(rep(c("T1","T2"),4),
+                         rep("N/A",2)), levels(seu$HTO_HTODemux))
+Timepoint <- Timepoint[seu$HTO_HTODemux]
+names(Timepoint) <- colnames(seu)
+seu <- AddMetaData(seu, metadata = Timepoint, col.name = "Timepoint")
+seu$Timepoint <- factor(seu$Timepoint,
+                             levels=c("T1","T2","N/A"))
+# assign colors
+Condition.colors <- setNames(c("#a4133c","#5b8e7d"),
+                              levels(seu$condition1))
+
+Condition3.colors <- setNames(c("#a4133c","#5b8e7d"),
+                              levels(seu$condition1))
+
+Subject.colors <- setNames(c(kelly(22)[c(11,16)],
+                           kelly(22)[c(3,15)],
+                           kelly(22)[c(19,10)]),
+                           levels(seu$Subject))
+
+Timepoint.colors <- setNames(kelly(22)[c(6,12,9)],
+                             levels(seu$Timepoint))
+
+Sample.colors <- setNames(kelly(22)[3:12],
+                          levels(seu$Sample))
+
+```
+
+Scale data
+```{r}
+s <- seu
+seu <- subset(s, Annotation == "recMo/MΦ")
+seu <- ScaleData(seu)
+
+
+cell <- seu
+```
+
+
+Plot heat map (lung fibrosis, IL-4 & IL-13, IL-10)
+```{r}
+DefaultAssay(cell) <- "RNA"
+cell <- NormalizeData(cell)
+cell <- ScaleData(cell)
+Idents(cell) <- "condition3"
+cell$Condition <- cell$condition3
+
+plot_list <- list()
+
+# WP3624
+#wp3624 <- c("SPP1","CCL2","CCL4","CCL3","CXCL8","MMP9","IL1B","CXCL2","NFE2L2","CEBPB")
+RHSA6785807 <- c("CCL2","CXCL8","BCL2","TNFRSF1B","MMP9","CD36","ITGAX","IL1B","STAT1","FOS","VEGFA","JAK1","IL6R","HIF1A","JUNB","CDKN1A")
+RHSA6783783 <- c("CCL2","CCL4","CCL3","CXCL8","IL1RN","TNFRSF1B","IL1B","CXCL2","IL1R1","JAK1","CCR5")
+
+#features <- unique(c(wp3624, RHSA6785807, RHSA6783783))
+features <- unique(c(RHSA6785807, RHSA6783783))
+
+# group by individual ==========================================================
+cell.avg <- AverageExpression(cell,
+                              group.by = c("HTO_HTODemux"),
+                              slots="data",
+                              assays = "RNA",
+                              features = features,
+                              return.seurat = TRUE,
+                              )
+
+# add HTO_HTODemux to metadata
+cell.avg$HTO_HTODemux <- factor(paste0("Human_HTO_",sapply(strsplit(rownames(cell.avg@meta.data),"_"),"[[",3)),
+                                levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16)))
+
+
+# add Condition
+Condition <- setNames(c(rep("ETI-treated",4),
+                         rep("CF-untreated",4),
+                         rep("Healthy",2)),
+                       levels(cell.avg$HTO_HTODemux))
+Condition <- Condition[cell.avg$HTO_HTODemux]
+names(Condition) <- colnames(cell.avg)
+cell.avg <- AddMetaData(cell.avg, metadata = Condition, col.name = "Condition")
+cell.avg$Condition <- factor(cell.avg$Condition,
+                             levels=c("ETI-treated", "CF-untreated","Healthy"))
+
+# add Timepoint to metadata
+Timepoint <- setNames(c(rep(c("T1","T2"),4),
+                         rep("N/A",2)), levels(cell.avg$HTO_HTODemux))
+Timepoint <- Timepoint[cell.avg$HTO_HTODemux]
+names(Timepoint) <- colnames(cell.avg)
+cell.avg <- AddMetaData(cell.avg, metadata = Timepoint, col.name = "Timepoint")
+cell.avg$Timepoint <- factor(cell.avg$Timepoint,
+                             levels=c("T1","T2","N/A"))
+
+# add Subject to metadata
+Subject <- setNames(c("ETI1","ETI1",
+                      "ETI2","ETI2",
+                      "UT1","UT1",
+                      "UT2","UT2",
+                      "HC1","HC2"),levels(cell.avg$HTO_HTODemux))
+Subject <- Subject[cell.avg$HTO_HTODemux]
+names(Subject) <- colnames(cell.avg)
+cell.avg <- AddMetaData(cell.avg, metadata = Subject, col.name = "Subject")
+cell.avg$Subject <- factor(cell.avg$Subject,
+                          levels=c("ETI1","ETI2",
+                                   "UT1","UT2",
+                                   "HC1","HC2"))
+
+# heatmap using dittoSeq
+Condition.colors <- setNames(c("#a4133c","#fff3b0","#5b8e7d"),
+                              levels(cell.avg$Condition))
+
+Subject.colors <- setNames(c(kelly(22)[c(11,16)],
+                           kelly(22)[c(3,15)],
+                           kelly(22)[c(19,10)]),
+                           levels(cell.avg$Subject))
+
+Timepoint.colors <- setNames(kelly(22)[c(6,12,9)],
+                             levels(cell.avg$Timepoint))
+
+
+# get the matrix
+f3a <- grid.grabExpr(draw(dittoHeatmap(cell.avg,
+             genes=rownames(cell.avg@assays$RNA@scale.data),
+             order.by = c("Condition","Timepoint","Subject"),
+             annot.by = rev(c("Condition","Subject","Timepoint")),
+             heatmap.colors = cividis(256),
+             heatmap.colors.max.scaled = viridis(256),
+             width=unit(1/ncol(cell.avg), "npc"),
+             complex = TRUE,
+             scaled.to.max = FALSE,
+             cluster_cols = FALSE,
+             cluster_rows = FALSE,
+             name = "Scale",
+             fontsize=8,
+             annotation_colors = list("Condition"= Condition.colors,
+                                      "Subject" = Subject.colors,
+                                      "Timepoint" = Timepoint.colors),
+             heatmap_legend_param = list(labels_gp = gpar(fontsize = 8),
+                                         legend_direction = "vertical"
+                                         ),
+             cellheight=16,
+             cellwidth=16
+             )))
+f3a
+# group by Condition ===========================================================
+cell.avg <- AverageExpression(cell,
+                              group.by = c("Condition"),
+                              slots="data",
+                              assays = "RNA",
+                              features = features,
+                              return.seurat = TRUE,
+                              )
+
+# add HTO_HTODemux to metadata
+cell.avg$HTO_HTODemux <- factor(paste0("Human_HTO_",sapply(strsplit(rownames(cell.avg@meta.data),"_"),"[[",3)),
+                                levels=paste0("Human_HTO_",c(3,6,7,8,10,12,13,14,15,16)))
+
+
+# add Condition
+cell.avg <- AddMetaData(cell.avg,
+                        metadata=factor(c("CF-untreated", "CF-untreated","ETI-treated", "ETI-treated", "Healthy"),
+                                        levels=c("ETI-treated", "CF-untreated","Healthy")),
+                        col.name="Condition")
+
+# add Timepoint to metadata
+cell.avg <- AddMetaData(cell.avg,
+                        metadata=factor(c("T1","T2","T1","T2","N/A"),
+                                        levels=c("T1", "T2","N/A")),
+                        col.name="Timepoint")
+
+m.v3 <- dittoHeatmap(cell.avg,
+             genes=rownames(cell.avg@assays$RNA@scale.data),
+             order.by = rev(c("Condition","Timepoint")),
+             annot.by = c("Condition","Timepoint"),
+             heatmap.colors = cividis(256),
+             heatmap.colors.max.scaled = viridis(256),
+             width=unit(1/ncol(cell.avg), "npc"),
+             complex = TRUE,
+             scaled.to.max = FALSE,
+             cluster_cols = FALSE,
+             cluster_rows = FALSE,
+             name = "Scale",
+             fontsize=8,
+             annotation_colors = list("Condition"= Condition.colors,
+                                      "Timepoint" = Timepoint.colors),
+             heatmap_legend_param = list(labels_gp = gpar(fontsize = 8),
+                                         legend_direction = "vertical"
+                                         ),
+             cellheight=16,
+             cellwidth=20
+             )
+layout = "AAAAABBBBBCCCCC\nAAAAABBBBBCCCCC\nAAAAABBBBBCCCCC"
+showtext::showtext_auto()
+showtext::showtext_opts(dpi = 1400)
+as.ggplot(m) + ggtitle("ETI-treated_T2 vs ETI-treated_T1 [gpBy sample]\nLung fibrosis + IL-4 & IL-13 signaling + IL-10 signaling DEGs") + theme(plot.title=element_text(hjust=0.5, size=10, face="bold")) +
+  as.ggplot(m.v2) + ggtitle("ETI-treated_T2 vs ETI-treated_T1 DEGs [gpBy condition]\nLung fibrosis + IL-4 & IL-13 signaling + IL-10 signaling DEGs") + theme(plot.title=element_text(hjust=0.5, size=10, face="bold")) +
+  as.ggplot(m.v3) + ggtitle("ETI-treated_T2 vs ETI-untreated_T2 DEGs [gpBy condition]\nLung fibrosis + IL-4 & IL-13 signaling + IL-10 signaling DEGs") + theme(plot.title=element_text(hjust=0.5, size=10, face="bold")) +
+  plot_layout(design = layout) +
+  plot_annotation(tag_levels = "A") & 
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Ariel"))
+
+ggsave(plot=last_plot(),
+       device="jpeg",
+       height=10,
+       width=18,
+       dpi=1200,
+       filename = "fibrosis.heatmap.jpeg")
+
+```

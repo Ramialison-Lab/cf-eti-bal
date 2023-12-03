@@ -18,14 +18,14 @@ Code included in the "src" directory:
 1. Shell script for cellranger multi  
 2. R script for QC, HTO demultiplexing and preprocessing with reference to Maksimovic et al. (2022)
 3. R script for reference-based Human Lung Cell Atlas v2 annotation
-4. R script for clustering  
-5. R script for sub-clustering of macrophage  
-6. R script for differential expression and pathway enrichment  
+4. R script for clustering of BAL cells
+5. R script for sub-clustering of macrophages
+6. R script for differential expression and pathway enrichment of recruited lung monocytes & macrophages
 7. R script for pseudotime analysis of recruited lung monocytes & macrophages  
 
 ## References
 Stoeckius, M., Zheng, S., Houck-Loomis, B. et al. Cell Hashing with barcoded antibodies enables multiplexing and doublet detection for single cell genomics. Genome Biol 19, 224 (2018).  
 Maksimovic, J. et al. Single-cell atlas of bronchoalveolar lavage from preschool cystic fibrosis reveals new cell phenotypes. bioRxiv 2022.2006.2017.496207 (2022).
 
-last updated:
+## Last updated:
 03-Dec-2023

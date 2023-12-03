@@ -7,7 +7,7 @@ Developers: Anson Wong (main), Hieu T Nim (contributor), Ramialison Laboratory, 
 Computational analyses of single-cell RNA-seq data from bronchoalveolar lavage (BAL) of preschool cystic fibrosis receiving Elexacaftor-Texacaftor-Ivacaftor (ETI) therapy.
 Single-cell RNA-seq libraries were generated using the Cell Hashing with 10x Single Cell 3' Reagent Kit v3.1 (Dual Index) Protocol (Stoeckius et al. 2018).  
   
-There are two batches for this dataset.  
+There are two batches in this dataset.  
 For batch 1, ~110,000 cells from 10 hashed samples (each with a distinct Hashtag Antibody, or HTO) were pooled into one tube to generate four captures.  
 For batch 2, ~60,000 cells from 6 hashed samples were pooled to generate two captures.  
 QC and demultiplexing were carried out separately. Two batches were integrated into one dataset for clustering and downstream analysis.  

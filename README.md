@@ -1,7 +1,4 @@
 # CF-ETI-scRNA
-Cell-hashing Single-cell RNA sequencing Data Analysis Pipeline
-
-Developers: Anson Wong (main), Hieu T Nim (contributor), Ramialison Laboratory, Australian Regenerative Medicine Institute & Murdoch Children's Research Institute, Australia  
 
 ## Description
 Computational analyses of single-cell RNA-seq data from bronchoalveolar lavage (BAL) of preschool cystic fibrosis receiving Elexacaftor-Texacaftor-Ivacaftor (ETI) therapy.
@@ -19,6 +16,8 @@ Code included in the "src" directory:
 4. R script for separate sub-clustering of Monocytes and Macrophages, T and NK cells, and other cells.
 5. R script for differential expression and pathway enrichment of recruited lung monocytes & macrophages
 6. R script for pseudotime analysis of recruited lung monocytes & macrophages  
+
+Developers: Anson Wong (main), Hieu T Nim (contributor), Ramialison Laboratory, Australian Regenerative Medicine Institute & Murdoch Children's Research Institute, Australia  
 
 ## References
 Stoeckius, M., Zheng, S., Houck-Loomis, B. et al. Cell Hashing with barcoded antibodies enables multiplexing and doublet detection for single cell genomics. Genome Biol 19, 224 (2018).  

@@ -1,4 +1,4 @@
-# CF-ETI-scRNA
+# cf-eti-bal
 
 ## Description
 Computational analyses of single-cell RNA-seq data from bronchoalveolar lavage (BAL) of preschool cystic fibrosis receiving Elexacaftor-Texacaftor-Ivacaftor (ETI) therapy.

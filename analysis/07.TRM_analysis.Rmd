@@ -714,7 +714,7 @@ write.csv(markers %>%
 ```
 
 ### 4.5.3 GO enrichment
-Top 10 results shown in Table E11 are written by code/bal_GOenrichment.R
+Top 10 results shown in Table E11 are written by code/goEnrichment.R
 ```{r}
 # get ensemblDB
 getCols <- setNames(c("SYMBOL","ENTREZID"),c("SYMBOL","ENTREZID"))

@@ -198,6 +198,35 @@ ID2 <- setNames(factor(ID2[seu$sampleID],
 
 seu <- AddMetaData(seu, ID2, col.name = "ID2")
 
+# Assign batchID 2
+draft1 <- factor(
+      case_when(
+        seu$sampleID %in% c("M1C170C","M1C176") ~ "batch 1"))
+
+seu <- AddMetaData(seu, draft1, col.name = "draft1")
+
+seu$batchID <- factor(seu$batchID,
+                       levels=c("A","B","C","D"))
+
+draft2 <- setNames(c("batch 3","batch 4","batch 2", "batch 1"),
+                     levels(seu$batchID))
+
+draft2 <- setNames(factor(draft2[seu$batchID],levels=paste0("batch ",1:4)),
+                     colnames(seu))
+
+seu <- AddMetaData(seu, draft2, col.name = "draft2")
+
+# coalesce two draft columns
+seu@meta.data %>%
+  mutate(batchID2=coalesce(draft1,draft2)) -> seu@meta.data
+
+# reorder levels
+seu$batchID2 <- factor(seu$batchID2,
+                       levels=paste0("batch ",1:4))
+
+# remove draft columns
+seu$draft2 <- NULL
+
 # Factorize latent variables
 seu$Bronchiectasis <- factor(seu$Bronchiectasis)
 seu$subtype <- factor(seu$subtype)
@@ -214,6 +243,8 @@ Condition3.colours <- setNames(c("#26547c","#ffbe0b","#d62828","#588157"),
                                levels(seu$Condition3))
 Condition4.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
                                levels(seu$Condition4))
+batch.colours <- setNames(rev(c("#e07a5f", "#3d405b", "#81b29a", "#f2cc8f")),
+                          levels(seu$batchID2))
 ```
 
 Backup objects: RecM
@@ -223,7 +254,7 @@ seu.RecM <- s
 
 Backup objects: TRM-CCL
 ```{r}
-seu.TRMCCL <- seu
+seu.TRMCCL <- s
 ```
 
 ## 2.3 Proportion of cells
@@ -459,7 +490,7 @@ write.csv(markers %>%
 ```
 
 ### 2.4.3 GO enrichment
-Top 10 results shown in Table E11 are written by code/bal_GOenrichment.R
+Top 10 results shown in Table E11 are written by code/goEnrichment.R
 ```{r}
 # get ensemblDB
 getCols <- setNames(c("SYMBOL","ENTREZID"),c("SYMBOL","ENTREZID"))
@@ -579,7 +610,9 @@ for(x in names(seu.list)) {
 
 ### 2.4.5 MDS plot
 #### 2.4.5.1 RecM
-```{r}
+```{r fig.width=10, fig.height=4}
+seu <- seu.list$RecM
+
 # prepare DEGs
 compare.list <- setNames(c("CF.ETI vs CF.ETI.BL","CF.UT vs CF.UT.BL","CF.ETI vs HC","CF.UT vs HC"),
                          c("CF.ETI_vs_CF.ETI.BL","CF.UT_vs_CF.UT.BL","CF.ETI_vs_HC","CF.UT_vs_HC"))
@@ -635,15 +668,33 @@ seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(rownames(seu.pseudobulk@met
 seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c(rep("HC",6),rep(c("CF.UT.BL","CF.UT"),3),rep(c("CF.ETI.BL","CF.ETI"),3)),
                                                      levels=c("HC","CF.UT.BL","CF.UT","CF.ETI.BL","CF.ETI")),
                                                      col.name = "Condition")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c("batch 4",
+                                                       "batch 1",
+                                                       "batch 4",
+                                                       "batch 3",
+                                                       "batch 3",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1")),
+                                                     col.name = "batchID2")
+seu.pseudobulk$batchID2 <- factor(seu.pseudobulk$batchID2, levels=c("batch 1","batch 2","batch 3","batch 4"))
 
 Condition.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
                                levels(seu.pseudobulk$Condition))
 sample.colours <- setNames(c(rep("#26547c",6),rep(c("#dda15e","#bc6c25"),3),rep(c("#a3b18a","#588157"),3)),
                            levels(seu.pseudobulk$sampleID))
-showtext::showtext_auto()
-showtext::showtext_opts(dpi = 1600)
 
-p <- DimPlot(seu.pseudobulk, 
+p3 <- DimPlot(seu.pseudobulk, 
         reduction = "mds", 
         pt.size = 4, 
         seed = 1990,
@@ -653,14 +704,8 @@ p <- DimPlot(seu.pseudobulk,
         label.box = FALSE, 
         repel = TRUE) + NoLegend() + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
 
-ggsave(plot=p,
-       device="jpeg",
-       dpi=1600,
-       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot.jpeg"),
-       height=6,
-       width=6)
 
-p2 <- DimPlot(seu.pseudobulk, 
+p4 <- DimPlot(seu.pseudobulk, 
         reduction = "mds", 
         pt.size = 4, 
         seed = 1990,
@@ -670,21 +715,24 @@ p2 <- DimPlot(seu.pseudobulk,
         label.box = FALSE, 
         repel = TRUE) + ggtitle("RecM") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
 
-ggsave(plot=p2,
-       device="jpeg",
-       dpi=1600,
-       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot2.jpeg"),
-       height=6,
-       width=8)
+p4.batch <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "batchID2", 
+        cols = batch.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("RecM") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
 
-showtext::showtext_auto()
-showtext::showtext_opts(dpi = 100)
-
-
+p3|p4
+p4|p4.batch
 ```
 
 #### 2.4.5.2 TRM-CCL
-```{r}
+```{r fig.width=10, fig.height=4}
+seu <- seu.list$`TRM-CCL`
+
 # prepare DEGs
 compare.list <- setNames(c("CF.ETI vs CF.ETI.BL","CF.UT vs CF.UT.BL","CF.ETI vs HC","CF.UT vs HC"),
                          c("CF.ETI_vs_CF.ETI.BL","CF.UT_vs_CF.UT.BL","CF.ETI_vs_HC","CF.UT_vs_HC"))
@@ -740,15 +788,33 @@ seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(rownames(seu.pseudobulk@met
 seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c(rep("HC",6),rep(c("CF.UT.BL","CF.UT"),3),rep(c("CF.ETI.BL","CF.ETI"),3)),
                                                      levels=c("HC","CF.UT.BL","CF.UT","CF.ETI.BL","CF.ETI")),
                                                      col.name = "Condition")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c("batch 4",
+                                                       "batch 1",
+                                                       "batch 4",
+                                                       "batch 3",
+                                                       "batch 3",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1")),
+                                                     col.name = "batchID2")
+seu.pseudobulk$batchID2 <- factor(seu.pseudobulk$batchID2, levels=c("batch 1","batch 2","batch 3","batch 4"))
 
 Condition.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
                                levels(seu.pseudobulk$Condition))
 sample.colours <- setNames(c(rep("#26547c",6),rep(c("#dda15e","#bc6c25"),3),rep(c("#a3b18a","#588157"),3)),
                            levels(seu.pseudobulk$sampleID))
-showtext::showtext_auto()
-showtext::showtext_opts(dpi = 1600)
 
-p <- DimPlot(seu.pseudobulk, 
+p5 <- DimPlot(seu.pseudobulk, 
         reduction = "mds", 
         pt.size = 4, 
         seed = 1990,
@@ -758,14 +824,7 @@ p <- DimPlot(seu.pseudobulk,
         label.box = FALSE, 
         repel = TRUE) + NoLegend() + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
 
-ggsave(plot=p,
-       device="jpeg",
-       dpi=1600,
-       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.",celltype,".MDSplot.jpeg")),
-       height=6,
-       width=6)
-
-p2 <- DimPlot(seu.pseudobulk, 
+p6 <- DimPlot(seu.pseudobulk, 
         reduction = "mds", 
         pt.size = 4, 
         seed = 1990,
@@ -775,16 +834,17 @@ p2 <- DimPlot(seu.pseudobulk,
         label.box = FALSE, 
         repel = TRUE) + ggtitle("TRM-CCL") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
 
-ggsave(plot=p2,
-       device="jpeg",
-       dpi=1600,
-       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.",celltype,".MDSplot2.jpeg")),
-       height=6,
-       width=8)
-
-showtext::showtext_auto()
-showtext::showtext_opts(dpi = 100)
-
+p6.batch <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "batchID2", 
+        cols = batch.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("TRM-CCL") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+p5|p6
+p6|p6.batch
 ```
 
 
@@ -828,6 +888,61 @@ ggsave(last_plot(),
        dpi=1600,
        height=6, 
        width=10)
+
+# MDS plots
+p3 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot.jpeg"),
+       height=6,
+       width=6)
+
+p4 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot2.jpeg"),
+       height=6,
+       width=8)
+
+p5 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot.jpeg")),
+       height=6,
+       width=6)
+
+p6 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot2.jpeg")),
+       height=6,
+       width=8)
+
+p4.batch +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM",paste0("bal_ETI.RecM.MDSplot_batch.jpeg")),
+       height=6,
+       width=8)
+
+p6.batch +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot_batch.jpeg")),
+       height=6,
+       width=8)
 
 showtext::showtext_auto()
 showtext::showtext_opts(dpi = 100)

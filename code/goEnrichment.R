@@ -33,10 +33,6 @@ date <- Sys.Date()
 # ETI
 celltypes <- setNames(c("TRM-CCL","RecM"),
                       c("TRM-CCL","RecM"))
-#compare.list <- setNames(c("CF.ETI.BL vs CF.UT.BL","CF.ETI.BL vs HC","CF.UT.BL vs HC","CF.ETI vs CF.ETI.BL",
-#                           "CF.UT vs CF.UT.BL","CF.ETI vs HC","CF.UT vs HC","CF.ETI vs CF.UT"),
-#                         c("CF04-06.BL_vs_CF01-03.BL","CF04-06.BL_vs_HC","CF01-03.BL_vs_HC","CF.ETI_vs_CF04-06.BL",
-#                           "CF.UT_vs_CF01-03.BL","CF.ETI_vs_HC","CF.UT_vs_HC","CF.ETI_vs_CF.UT"))
 
 compare.list <- setNames(c("CF.ETI vs CF.ETI.BL",
                            "CF.UT vs CF.UT.BL",
@@ -134,4 +130,4 @@ for (celltype in names(celltypes)) {
 
 # write the big df
 # write.csv(bigdf, file=here("data","GOBP","CF_vs_HC.bigdf.csv"), row.names = FALSE)
-write.csv(bigdf, file=here("data","GOBP","ETI.bigdf_mast3.csv"), row.names = FALSE)
+write.csv(bigdf, file=here("data","GOBP","ETI.bigdf.csv"), row.names = FALSE)

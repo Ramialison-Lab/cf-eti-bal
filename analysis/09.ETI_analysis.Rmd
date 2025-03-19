@@ -1,0 +1,967 @@
+---
+title: 'Effect of Trikafta on monocytes and macrophages'
+author:
+- name: Anson Wong
+  affiliation: Molecular Immunity, Murdoch Children's Research Institute
+date: "`r Sys.Date()`"
+description: null
+output: html_document
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+xaringanExtra::use_panelset()
+
+```
+
+# 1 Load packages
+```{r}
+suppressPackageStartupMessages({
+library(Seurat)
+library(here)
+library(qs)
+library(forcats)
+library(pals)
+library(ggplot2)
+library(ggpubr)
+library(cowplot)
+library(speckle)
+library(rstatix)
+library(scCustomize)
+library(patchwork)
+library(dplyr)
+library(Cepo)
+library(phateR)
+library(slingshot)
+library(tradeSeq)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(ReactomePA)
+library(readr)
+library(DOSE)
+library(parallelDist)
+})
+set.seed(1990)
+
+```
+
+# 2 Analysis
+Annotation was performed on longitudinal samples.
+
+The sample size per condition for this analysis are as follows:
+n=3 CF.UT.BL
+n=3 CF.UT
+n=3 CF.ETI.BL
+n=3 CF.ETI
+
+## 2.1 Read processed object
+RecM
+```{r}
+# load analysis object
+celltype <- "RecM"
+seu <- qread(here("data","SCEs","final.annot",paste0("bal_",celltype,".final_annot.SEU.qs")),
+                  nthreads=16)
+latent.vars <- c("Bronchiectasis")
+```
+
+TRM-CCL
+```{r}
+# load analysis object
+celltype <- "TRM-CCL"
+seu <- qread(here("data","SCEs","final.annot",paste0("bal_",celltype,".final_annot.SEU.qs")),
+                  nthreads=16)
+latent.vars <- c("Bronchiectasis")
+```
+
+Combined (for plotting proportion)
+```{r}
+# load analysis object
+seu <- qread(here("data","SCEs","manual.annot",paste0("bal.SEU.qs")),
+                  nthreads=16)
+latent.vars <- c("Bronchiectasis")
+```
+
+TRM (for plotting proportion)
+```{r}
+# load analysis object
+celltype <- "TRM"
+seu <- qread(here("data","SCEs","final.annot",paste0("bal_",celltype,".final_annot.SEU.qs")),
+                  nthreads=16)
+latent.vars <- c("Bronchiectasis")
+```
+
+## 2.2 Prepare object for downstream analysis
+Run this for both RecM and TRM-CCL
+```{r}
+# Subset object
+seu.backup <- seu
+seu <- subset(seu.backup, 
+              sampleID %in% c("M1C160(1)","M1C160F", # CF-S1, treated
+                              "M1C177","M1C177C", # CF-M3, treated
+                              "M1C188","M1C188B", # CF-S3, treated
+                              "M1C170C","M1C170D", # CF-M1, untreated
+                              "M1C176", "M1C176C", # CF-M2
+                              "M1C180","M1C180D", # CF-M4
+                              "M1N066","M1N075","M1N078","M1N080","M1N087","M1N092" #HC1-6
+                              ))
+seu$Condition <- fct_drop(seu$Condition)
+seu$sampleID <- fct_drop(seu$sampleID)
+
+# Assign ID for analysis
+seu$sampleID <- factor(seu$sampleID,
+                       levels=c("M1N066","M1N075","M1N078","M1N080","M1N087","M1N092", #HC1-6
+                              "M1C170C","M1C170D", # CF-M1, untreated
+                              "M1C176","M1C176C", # CF-M2, untreated
+                              "M1C180","M1C180D", # CF-M4, untreated
+                              "M1C160(1)","M1C160F", # CF-S1, treated
+                              "M1C177","M1C177C", # CF-M3, treated
+                              "M1C188","M1C188B" # CF-S3, treated
+                              ))
+
+# Add Condition2
+draft1 <- factor(
+      case_when(
+        seu$Condition == "Control" ~ "HC"))
+draft2 <- factor(
+  case_when(
+    seu$Bronchiectasis == "No" ~ "CFN",
+    seu$Bronchiectasis == "Yes" ~ "CFB"
+  )
+)
+
+Condition2 <- coalesce(draft1,draft2)
+names(Condition2) <- colnames(seu)
+seu <- AddMetaData(seu, Condition2, col.name = "Condition2")
+seu$Condition2 <- factor(seu$Condition2,levels=c("HC","CFM","CFS"))
+
+# Add Timepoint
+Timepoint <- setNames(c(rep("t1",6),rep(c("t1","t2"),6)),
+                      levels(seu$sampleID))
+
+Timepoint <- setNames(factor(Timepoint[seu$sampleID],
+                             levels=c("t1","t2")),
+                      colnames(seu))
+seu <- AddMetaData(seu, Timepoint, col.name = "Timepoint")
+
+# Add Condition3, which is CF.BL at timepoint 1, and either CF.UT or CF.ETI at timepoint 2
+Condition3 <- setNames(c(rep("HC",6),rep(c("CF.BL","CF.UT"),3),rep(c("CF.BL","CF.ETI"),3)),
+                      levels(seu$sampleID))
+
+Condition3 <- setNames(factor(Condition3[seu$sampleID],
+                             levels=c("HC","CF.BL","CF.UT","CF.ETI")),
+                      colnames(seu))
+seu <- AddMetaData(seu, Condition3, col.name = "Condition3")
+
+# Add Condition4, which is CF.BL at timepoint 1, and either CF.UT or CF.ETI at timepoint 2
+Condition4 <- setNames(c(rep("HC",6),rep(c("CF.UT.BL","CF.UT"),3),rep(c("CF.ETI.BL","CF.ETI"),3)),
+                      levels(seu$sampleID))
+
+Condition4 <- setNames(factor(Condition4[seu$sampleID],
+                             levels=c("CF.UT","CF.UT.BL","HC","CF.ETI","CF.ETI.BL")),
+                      colnames(seu))
+seu <- AddMetaData(seu, Condition4, col.name = "Condition4")
+
+
+# Assign analysis ID
+ID <- setNames(c(paste0("HC-0",1:6),
+                 rep("CF-M1",2),rep("CF-M2",2),rep("CF-M4",2),
+                 rep("CF-S1",2),rep("CF-M3",2),rep("CF-S3",2)),
+               levels(seu$sampleID))
+
+ID <- setNames(factor(ID[seu$sampleID],
+                      levels=c(paste0("HC-0",1:6),
+                               "CF-M1","CF-M2","CF-M4",
+                               "CF-S1","CF-M3","CF-S3")),
+               colnames(seu))
+
+seu <- AddMetaData(seu, ID, col.name = "ID")
+
+# Assign analysis ID2
+ID2 <- setNames(c(paste0("HC-0",1:6),
+                  "CF-01_BL","CF-01_UT",
+                  "CF-02_BL","CF-02_UT",
+                  "CF-03_BL","CF-03_UT",
+                  "CF-04_BL","CF-04_ETI",
+                  "CF-05_BL","CF-05_ETI",
+                  "CF-06_BL","CF-06_ETI"),
+                 levels(seu$sampleID))
+
+ID2 <- setNames(factor(ID2[seu$sampleID],
+                       levels=c(paste0("HC-0",1:6),
+                                paste0("CF-0",1:3,"_BL"),
+                                paste0("CF-0",1:3,"_UT"),
+                                paste0("CF-0",4:6,"_BL"),
+                                paste0("CF-0",4:6,"_ETI"))),
+                colnames(seu))
+
+seu <- AddMetaData(seu, ID2, col.name = "ID2")
+
+# Assign batchID 2
+draft1 <- factor(
+      case_when(
+        seu$sampleID %in% c("M1C170C","M1C176") ~ "batch 1"))
+
+seu <- AddMetaData(seu, draft1, col.name = "draft1")
+
+seu$batchID <- factor(seu$batchID,
+                       levels=c("A","B","C","D"))
+
+draft2 <- setNames(c("batch 3","batch 4","batch 2", "batch 1"),
+                     levels(seu$batchID))
+
+draft2 <- setNames(factor(draft2[seu$batchID],levels=paste0("batch ",1:4)),
+                     colnames(seu))
+
+seu <- AddMetaData(seu, draft2, col.name = "draft2")
+
+# coalesce two draft columns
+seu@meta.data %>%
+  mutate(batchID2=coalesce(draft1,draft2)) -> seu@meta.data
+
+# reorder levels
+seu$batchID2 <- factor(seu$batchID2,
+                       levels=paste0("batch ",1:4))
+
+# remove draft columns
+seu$draft2 <- NULL
+
+# Factorize latent variables
+seu$Bronchiectasis <- factor(seu$Bronchiectasis)
+seu$subtype <- factor(seu$subtype)
+
+seu.backup <- NULL
+gc()
+
+s <- seu
+
+# Set colors
+Condition2.colours <- setNames(c("#26547c","#ffd166","#ef476f"),
+                               levels(seu$Condition2))
+Condition3.colours <- setNames(c("#26547c","#ffbe0b","#d62828","#588157"),
+                               levels(seu$Condition3))
+Condition4.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
+                               levels(seu$Condition4))
+batch.colours <- setNames(rev(c("#e07a5f", "#3d405b", "#81b29a", "#f2cc8f")),
+                          levels(seu$batchID2))
+```
+
+Backup objects: RecM
+```{r}
+seu.RecM <- s
+```
+
+Backup objects: TRM-CCL
+```{r}
+seu.TRMCCL <- s
+```
+
+## 2.3 Proportion of cells
+### 2.3.1 Combined
+```{r}
+# calculate the proportion of cells --------------------------------------------
+props <- getTransformedProps(clusters=seu$celltype,
+                             sample=seu$ID2)
+                             
+props$Proportions %>%
+  data.frame -> df
+
+Annotation.colours <- setNames(c("#054a91", # TRM
+                                 "#dda15e", # RecM
+                                 "#81a4cd", # Prolif M
+                                 "#a3b18a", # cDC
+                                 "#81b29a", # pDC
+                                 "#3a5a40", # DC migratory
+                                 "#000000", # Mast
+                                 "#c3a995", # T
+                                 "#7f5539", # NK
+                                 "#5a189a", # B
+                                 "#b23a48" # Epithelial
+                                 ), # Secretory
+               levels(seu$celltype))
+
+# stacked bar plot of cell proportion per sampleID
+p1 <- ggplot(df, aes(x = sample, y = Freq, fill = clusters)) +
+  geom_bar(stat = "identity", position="stack") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   size=8,
+                                   colour = "black"),
+        axis.text.y = element_text(size=8,
+                                   colour = "black"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(face="bold", size=12)) +
+  labs( y = "Cell proportion", fill="Subtype", x=NULL) + #NoLegend() +
+  guides(fill = guide_legend(keyheight=0.8,
+                             keywidth=0.8)) +
+  scale_fill_manual(values = Annotation.colours) +
+  theme(legend.text.align = 0, legend.title = element_blank())
+
+p1
+
+```
+
+### 2.3.2 TRM
+```{r}
+s <- subset(seu, subtype != "RecM")
+seu$subtype <- fct_drop(s$subtype)
+
+
+# calculate the proportion of cells --------------------------------------------
+props <- getTransformedProps(clusters=s$subtype,
+                             sample=s$ID2)
+                             
+props$Proportions %>%
+  data.frame() -> df
+
+# stacked bar plot of cell proportion per sampleID
+p2 <- ggplot(df, aes(x = sample, y = Freq, fill = clusters)) +
+  geom_bar(stat = "identity", position="stack") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,
+                                   vjust = 1,
+                                   hjust = 1,
+                                   size=8,
+                                   colour = "black"),
+        axis.text.y = element_text(size=8,
+                                   colour = "black"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(face="bold", size=12)) +
+  labs( y = "Cell Proportion", fill="Subtype", x="Participant") +
+  guides(fill = guide_legend(keyheight=0.8,
+                             keywidth=0.8)) +
+  scale_fill_manual(values = subtype.colours, labels = subtype.labels) +
+  theme(legend.text.align = 0, legend.title = element_blank())
+  theme(legend.text.align = 0, legend.title = element_blank())
+
+p2
+
+```
+
+
+## 2.4 Differential gene expression analysis
+### 2.4.1 Prepare object
+RecM
+```{r}
+celltype <- "RecM"
+
+# subset object
+DefaultAssay(seu) <- "SCT"
+s <- seu # Change subtype here
+
+```
+
+TRM-CCL
+```{r}
+celltype <- "TRM-CCL"
+
+s <- qread(here("data","SCEs","final.annot","bal_ETI.TRM-CCL.final_annot.SEU.qs"),nthreads=16)
+DefaultAssay(s) <- "SCT"
+s$subtype <- fct_drop(s$subtype)
+```
+
+Comparisons:
+
+CF.ETI (n=3) vs CF.ETI.BL (n=3)
+```{r}
+# set idents
+Idents(s) <- "Condition4" # Change idents here
+
+# define condition
+test <- "CF.ETI"
+control <- "CF.ETI.BL"
+
+compare <- paste0(test,"_vs_",control)
+if(!dir.exists(here("data", "DE", celltype, compare))) {
+  dir.create(here("data", "DE", celltype, compare,"DEG"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"Reactome"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"WikiPathway"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_CC"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_BP"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_MF"), recursive = TRUE)
+}
+```
+
+CF.ETI (n=3) vs HC (n=6)
+```{r}
+# set idents
+Idents(s) <- "Condition4" # Change idents here
+
+# define condition
+test <- "CF.ETI"
+control <- "HC"
+
+compare <- paste0(test,"_vs_",control)
+if(!dir.exists(here("data", "DE", celltype, compare))) {
+  dir.create(here("data", "DE", celltype, compare,"DEG"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"Reactome"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"WikiPathway"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_CC"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_BP"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_MF"), recursive = TRUE)
+}
+```
+
+CF.UT (n=3) vs CF.UT.BL (n=3)
+```{r}
+# set idents
+Idents(s) <- "Condition4" # Change idents here
+
+# define condition
+test <- "CF.UT"
+control <- "CF.UT.BL"
+
+compare <- paste0(test,"_vs_",control)
+if(!dir.exists(here("data", "DE", celltype, compare))) {
+  dir.create(here("data", "DE", celltype, compare,"DEG"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"Reactome"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"WikiPathway"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_CC"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_BP"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_MF"), recursive = TRUE)
+}
+
+```
+
+CF.UT (n=3) vs HC (n=6)
+```{r}
+# set idents
+Idents(s) <- "Condition4" # Change idents here
+
+# define condition
+test <- "CF.UT"
+control <- "HC"
+
+compare <- paste0(test,"_vs_",control)
+if(!dir.exists(here("data", "DE", celltype, compare))) {
+  dir.create(here("data", "DE", celltype, compare,"DEG"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"Reactome"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"WikiPathway"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_CC"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_BP"), recursive = TRUE)
+  dir.create(here("data", "DE", celltype, compare,"GO_MF"), recursive = TRUE)
+}
+```
+
+
+### 2.4.2 DE
+DE results shown in Table E9 are written by code/writeDE.R
+```{r}
+# condition vs healthy
+markers <- FindMarkers(s,
+                       ident.1=test, # condition
+                       ident.2=control, # healthy
+                       test.use="MAST",
+                       latent.vars = latent.vars,
+                       random.seed=1990,
+                       recorrect_umi=FALSE, # skip this when using SCT assay
+                       min.pct=0.1,
+                       logfc.threshold = 0.25,
+                       only.pos = FALSE)
+
+markers$gene <- rownames(markers)
+
+# get sig up- and down-regulated genes
+deg <- markers %>% dplyr::filter(p_val_adj < 0.05)
+
+up <- deg %>% dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 0.25) %>% dplyr::arrange(desc(avg_log2FC))
+down <- deg %>% dplyr::filter(p_val_adj < 0.05 & avg_log2FC < -0.25) %>% dplyr::arrange(avg_log2FC)
+
+# write results
+write.csv(up %>%
+            dplyr::relocate(gene),
+            file = here("data","DE",celltype,compare,"DEG", paste0(celltype,".",compare,".DEG-up.csv")),
+            row.names = FALSE)
+write.csv(down %>%
+            dplyr::relocate(gene),
+            file = here("data","DE",celltype,compare,"DEG", paste0(celltype,".",compare,".DEG-down.csv")),
+            row.names = FALSE)
+write.csv(deg %>%
+            dplyr::relocate(gene),
+            file = here("data","DE",celltype,compare,"DEG", paste0(celltype,".",compare,".DEG-all.csv")),
+            row.names = FALSE)
+write.csv(markers %>%
+            dplyr::relocate(gene),
+            file = here("data","DE",celltype,compare,"DEG", paste0(celltype,".",compare,".DEG-raw.csv")),
+            row.names = FALSE)
+```
+
+### 2.4.3 GO enrichment
+Top 10 results shown in Table E11 are written by code/goEnrichment.R
+```{r}
+# get ensemblDB
+getCols <- setNames(c("SYMBOL","ENTREZID"),c("SYMBOL","ENTREZID"))
+
+genes <- data.frame(
+  lapply(getCols, function(column) {
+    mapIds(
+      x = org.Hs.eg.db,
+      keys = unique(deg$gene),
+      keytype = "SYMBOL",
+      column = column)
+  }),
+  row.names = unique(deg$gene))
+
+# GO BP enrichment
+go.up.bp <- enrichGO(genes[up$gene,]$ENTREZID, OrgDb=org.Hs.eg.db, ont="BP",
+                       pAdjustMethod = "BH", readable=TRUE, pvalueCutoff = 0.01)
+
+go.down.bp <- enrichGO(genes[down$gene,]$ENTREZID, OrgDb=org.Hs.eg.db, ont="BP",
+                     pAdjustMethod = "BH", readable=TRUE, pvalueCutoff = 0.01)
+
+# Remove redundant GO terms
+go.up.bp <- clusterProfiler::simplify(go.up.bp)
+go.down.bp <- clusterProfiler::simplify(go.down.bp)
+
+# write results
+go.up.bp@result %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::mutate(Celltype = celltype) %>%
+  dplyr::mutate(Comparison=compare) %>%
+  dplyr::mutate(Direction="Up") %>%
+  dplyr::mutate(Genes=gsub("/","; ",go.up.bp@result$geneID)) %>%
+  dplyr::select(Pathway, Celltype, Comparison, Direction, ID, Count, pvalue, p.adjust, Genes) %>%
+  slice_head(n = 10) -> up.df
+  write_csv(up.df, file = here("data","GOBP",celltype,compare, "GO_BP",
+                        paste0(celltype,".",compare,".GO_BP-up.csv")))
+
+go.down.bp@result %>%
+  dplyr::rename(Pathway=Description) %>%
+  dplyr::mutate(Celltype = celltype) %>%
+  dplyr::mutate(Comparison=compare) %>%
+  dplyr::mutate(Direction="Down") %>%
+  dplyr::mutate(Genes=gsub("/","; ",go.down.bp@result$geneID)) %>%
+  dplyr::select(Pathway, Celltype, Comparison, Direction, ID, Count, pvalue, p.adjust, Genes) %>%
+  slice_head(n = 10) -> down.df
+  write_csv(down.df, file = here("data","GOBP",celltype,compare, "GO_BP",
+                        paste0(celltype,".",compare,".GO_BP-down.csv")))
+```
+
+
+### 2.4.4 DotPlot
+```{r}
+lappend <- function (lst, ...){
+lst <- c(lst, list(...))
+  return(lst)
+}
+seu.list <- list()
+# read object
+seu.list <- list(seu.RecM,seu.TRMCCL)
+names(seu.list) <- c("RecM","TRM-CCL")
+
+response <- c("FOS","JUN","S100A9","CARD16","TSPO")
+cytokine <- c("TNFAIP3","EREG","NFKBIA","STAT1","PYCARD","FCER1G","IFI27","SPI1","CCL3","CCL4","CXCL2","CXCL3","CXCL8","IL1B","HSPA1A")
+antigen <- c("B2M", "HLA-A", "HLA-DRA","HLA-DRB1","CTSL","CD74")
+genes <- c(response, cytokine, antigen)
+plot.list <- list()
+
+for(x in names(seu.list)) {
+  pt3 <- DotPlot(seu.list[[x]],
+          features = genes,
+          group.by = "Condition4",
+          #cols=c("#B2182B","#F7F7F7","#2166AC"),
+          col.max = 1,
+          col.min = -1,
+          dot.scale = 6
+          ) + #coord_flip() +
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5) +
+  FontSize(y.text = 10, x.text = 8) + 
+  labs(y = element_blank(), x = element_blank(),title=x) + 
+    theme_bw() +
+  theme(text=element_text(family="Ariel"),
+        axis.text.x = element_text(size=10,face = "italic",angle=45,vjust=1,hjust=1),
+        axis.text.y = element_text(size=10,hjust=0),
+        legend.direction="horizontal",
+        legend.position="bottom",
+        legend.justification = "right",
+        legend.box="horizontal",
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8,family = "Arial"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
+        ) +
+    
+  scale_color_gradientn(colours = rev(brewer.rdbu(11)[2:10])) +
+  #scale_y_discrete(labels = rev(c("CF.ETI.BL","CF.ETI","HC","CF.UT.BL","CF.UT"))) +
+  scale_size_continuous(limits = c(0, 100),
+                        breaks = c(0, 25, 50, 75, 100),
+                        labels=c(0,"",50,"",100)) +
+  guides(size=guide_legend(override.aes=list(shape=21, 
+                                             colour="black", 
+                                             fill="#adb5bd"),
+                                             title="% of exp. cells",
+                                             label.position="bottom",
+                                             title.position="top",
+                                             title.hjust=0.5
+                                             ))
+  pt3$guides$colour$title <- "Scaled expression"
+  pt3$guides$colour$title.position <- "top"
+  pt3$guides$colour$title.hjust <- 0.5
+  
+  plot.list <- lappend(plot.list, pt3)
+}
+
+(plot.list[[1]]+theme(axis.text.x = element_blank())+NoLegend())/plot.list[[2]]
+
+```
+
+### 2.4.5 MDS plot
+#### 2.4.5.1 RecM
+```{r fig.width=10, fig.height=4}
+seu <- seu.list$RecM
+
+# prepare DEGs
+compare.list <- setNames(c("CF.ETI vs CF.ETI.BL","CF.UT vs CF.UT.BL","CF.ETI vs HC","CF.UT vs HC"),
+                         c("CF.ETI_vs_CF.ETI.BL","CF.UT_vs_CF.UT.BL","CF.ETI_vs_HC","CF.UT_vs_HC"))
+compare.list <- setNames(c("CF.ETI vs CF.ETI.BL"),
+                         c("CF.ETI_vs_CF.ETI.BL"))
+
+deg <- c()
+for (compare in names(compare.list)) {
+  celltype <- "RecM"
+  # read DE files
+  up <- read.csv(here("data","DE",celltype,compare,"DEG",paste0(celltype,".",compare,".DEG-up.csv")))
+  down <- read.csv(here("data","DE",celltype,compare,"DEG",paste0(celltype,".",compare,".DEG-down.csv")))
+  deg <- unique(c(deg, up$gene, down$gene))
+}
+
+length(deg)
+
+# Aggregate expression
+DefaultAssay(seu) <- "RNA"
+seu <- NormalizeData(seu)
+seu <- ScaleData(seu)
+
+seu.pseudobulk <- AggregateExpression(seu,
+                           group.by = c("sampleID"),
+                           #features = deg,
+                           slot = "data",
+                           return.seurat = TRUE,
+                           assays = "RNA")
+
+# Get matrix
+mtx <- as.matrix(t(GetAssayData(seu.pseudobulk, assay = "RNA", slot = "scale.data")))[,deg]
+df <- data.frame(mtx)
+# Before running MDS, we first calculate a distance matrix between all pairs of cells.  Here
+# we use a simple euclidean distance metric on all genes, using scale.data as input
+d <- parallelDist(mtx,threads=16)
+# Run the MDS procedure, k determines the number of dimensions
+mds <- cmdscale(d = d, k = 2)
+
+# mds1 = single-cell
+#mds1 <- mds
+
+# cmdscale returns the cell embeddings, we first label the columns to ensure downstream
+# consistency
+colnames(mds) <- paste0("MDS_", 1:2)
+# We will now store this as a custom dimensional reduction called 'mds'
+seu.pseudobulk[["mds"]] <- CreateDimReducObject(embeddings = mds, key = "MDS_", assay = DefaultAssay(seu.pseudobulk))
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, seu.pseudobulk@reductions$mds@cell.embeddings[,1],col.name = "MDS_1")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, seu.pseudobulk@reductions$mds@cell.embeddings[,2],col.name = "MDS_2")
+
+# We can now use this as you would any other dimensional reduction in all downstream functions
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(rownames(seu.pseudobulk@meta.data),
+                                                     levels=rownames(seu.pseudobulk@meta.data)),col.name = "sampleID")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c(rep("HC",6),rep(c("CF.UT.BL","CF.UT"),3),rep(c("CF.ETI.BL","CF.ETI"),3)),
+                                                     levels=c("HC","CF.UT.BL","CF.UT","CF.ETI.BL","CF.ETI")),
+                                                     col.name = "Condition")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c("batch 4",
+                                                       "batch 1",
+                                                       "batch 4",
+                                                       "batch 3",
+                                                       "batch 3",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1")),
+                                                     col.name = "batchID2")
+seu.pseudobulk$batchID2 <- factor(seu.pseudobulk$batchID2, levels=c("batch 1","batch 2","batch 3","batch 4"))
+
+Condition.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
+                               levels(seu.pseudobulk$Condition))
+sample.colours <- setNames(c(rep("#26547c",6),rep(c("#dda15e","#bc6c25"),3),rep(c("#a3b18a","#588157"),3)),
+                           levels(seu.pseudobulk$sampleID))
+
+p3 <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "sampleID", 
+        cols = sample.colours, 
+        label = TRUE, 
+        label.box = FALSE, 
+        repel = TRUE) + NoLegend() + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+
+p4 <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "Condition", 
+        cols = Condition.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("RecM") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+p4.batch <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "batchID2", 
+        cols = batch.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("RecM") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+p3|p4
+p4|p4.batch
+```
+
+#### 2.4.5.2 TRM-CCL
+```{r fig.width=10, fig.height=4}
+seu <- seu.list$`TRM-CCL`
+
+# prepare DEGs
+compare.list <- setNames(c("CF.ETI vs CF.ETI.BL","CF.UT vs CF.UT.BL","CF.ETI vs HC","CF.UT vs HC"),
+                         c("CF.ETI_vs_CF.ETI.BL","CF.UT_vs_CF.UT.BL","CF.ETI_vs_HC","CF.UT_vs_HC"))
+compare.list <- setNames(c("CF.ETI vs CF.ETI.BL"),
+                         c("CF.ETI_vs_CF.ETI.BL"))
+
+deg <- c()
+for (compare in names(compare.list)) {
+  celltype <- "TRM-CCL"
+  # read DE files
+  up <- read.csv(here("data","DE",celltype,compare,"DEG",paste0(celltype,".",compare,".DEG-up.csv")))
+  down <- read.csv(here("data","DE",celltype,compare,"DEG",paste0(celltype,".",compare,".DEG-down.csv")))
+  deg <- unique(c(deg, up$gene, down$gene))
+}
+
+length(deg)
+
+# Aggregate expression
+DefaultAssay(seu) <- "RNA"
+seu <- NormalizeData(seu)
+seu <- ScaleData(seu)
+
+seu.pseudobulk <- AggregateExpression(seu,
+                           group.by = c("sampleID"),
+                           #features = deg,
+                           slot = "data",
+                           return.seurat = TRUE,
+                           assays = "RNA")
+
+# Get matrix
+mtx <- as.matrix(t(GetAssayData(seu.pseudobulk, assay = "RNA", slot = "scale.data")))[,deg]
+df <- data.frame(mtx)
+# Before running MDS, we first calculate a distance matrix between all pairs of cells.  Here
+# we use a simple euclidean distance metric on all genes, using scale.data as input
+d <- parallelDist(mtx,threads=16)
+# Run the MDS procedure, k determines the number of dimensions
+mds <- cmdscale(d = d, k = 2)
+
+# mds1 = single-cell
+#mds1 <- mds
+
+# cmdscale returns the cell embeddings, we first label the columns to ensure downstream
+# consistency
+colnames(mds) <- paste0("MDS_", 1:2)
+# We will now store this as a custom dimensional reduction called 'mds'
+seu.pseudobulk[["mds"]] <- CreateDimReducObject(embeddings = mds, key = "MDS_", assay = DefaultAssay(seu.pseudobulk))
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, seu.pseudobulk@reductions$mds@cell.embeddings[,1],col.name = "MDS_1")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, seu.pseudobulk@reductions$mds@cell.embeddings[,2],col.name = "MDS_2")
+
+# We can now use this as you would any other dimensional reduction in all downstream functions
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(rownames(seu.pseudobulk@meta.data),
+                                                     levels=rownames(seu.pseudobulk@meta.data)),col.name = "sampleID")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c(rep("HC",6),rep(c("CF.UT.BL","CF.UT"),3),rep(c("CF.ETI.BL","CF.ETI"),3)),
+                                                     levels=c("HC","CF.UT.BL","CF.UT","CF.ETI.BL","CF.ETI")),
+                                                     col.name = "Condition")
+seu.pseudobulk <- AddMetaData(seu.pseudobulk, factor(c("batch 4",
+                                                       "batch 1",
+                                                       "batch 4",
+                                                       "batch 3",
+                                                       "batch 3",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1",
+                                                       "batch 2",
+                                                       "batch 2",
+                                                       "batch 1",
+                                                       "batch 1")),
+                                                     col.name = "batchID2")
+seu.pseudobulk$batchID2 <- factor(seu.pseudobulk$batchID2, levels=c("batch 1","batch 2","batch 3","batch 4"))
+
+Condition.colours <- setNames(c("#26547c","#dda15e","#bc6c25","#a3b18a","#588157"),
+                               levels(seu.pseudobulk$Condition))
+sample.colours <- setNames(c(rep("#26547c",6),rep(c("#dda15e","#bc6c25"),3),rep(c("#a3b18a","#588157"),3)),
+                           levels(seu.pseudobulk$sampleID))
+
+p5 <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "sampleID", 
+        cols = sample.colours, 
+        label = TRUE, 
+        label.box = FALSE, 
+        repel = TRUE) + NoLegend() + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+p6 <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "Condition", 
+        cols = Condition.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("TRM-CCL") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+p6.batch <- DimPlot(seu.pseudobulk, 
+        reduction = "mds", 
+        pt.size = 4, 
+        seed = 1990,
+        group.by = "batchID2", 
+        cols = batch.colours, 
+        label = FALSE, 
+        label.box = FALSE, 
+        repel = TRUE) + ggtitle("TRM-CCL") + theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+p5|p6
+p6|p6.batch
+```
+
+
+# 5 Save figures
+```{r}
+celltype <- "ETI"
+out <- here("data","plots",celltype)
+if(!dir.exists(out)) {
+  dir.create(out,recursive = TRUE)
+}
+showtext::showtext_auto()
+showtext::showtext_opts(dpi = 1600)
+
+# Proportion combined
+p1 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","ETI","bal_ETI.TRM_combined.prop.jpeg"),
+       height=4,
+       width=8)
+
+# Proportion TRM
+p2 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","ETI","bal_ETI_combined.prop.jpeg"),
+       height=4,
+       width=8)
+
+# DotPlot of DEGs
+(plot.list[[1]]+theme(axis.text.x = element_blank())+NoLegend())/plot.list[[2]]
+
+ggsave(last_plot(),
+       filename=here("data","plots","ETI","ETI.RecM_TRM-CCL.dotplot.jpeg"),
+       device="jpeg",
+       dpi=1600,
+       height=6, 
+       width=10)
+
+# MDS plots
+p3 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot.jpeg"),
+       height=6,
+       width=6)
+
+p4 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM","bal_ETI.RecM.MDSplot2.jpeg"),
+       height=6,
+       width=8)
+
+p5 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot.jpeg")),
+       height=6,
+       width=6)
+
+p6 +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot2.jpeg")),
+       height=6,
+       width=8)
+
+p4.batch +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","RecM",paste0("bal_ETI.RecM.MDSplot_batch.jpeg")),
+       height=6,
+       width=8)
+
+p6.batch +
+  theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
+ggsave(plot=last_plot(),
+       device="jpeg",
+       dpi=1600,
+       filename = here("data","plots","TRM-CCL",paste0("bal_ETI.TRM-CCL.MDSplot_batch.jpeg")),
+       height=6,
+       width=8)
+
+showtext::showtext_auto()
+showtext::showtext_opts(dpi = 100)
+```
+
+
+# 6 Save object
+```{r}
+celltype <- "ETI"
+out <- here("data","SCEs","analysis",celltype)
+if(!dir.exists(out)) {
+  dir.create(out,recursive = TRUE)
+}
+
+out <- here("data","SCEs","analysis",celltype,paste0("bal_",celltype,".analysis.SEUlist.qs"))
+
+if (!file.exists(out)) {
+  qsave(seu.list,file=out,nthreads=16)
+}
+```
+
+

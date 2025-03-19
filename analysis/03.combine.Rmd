@@ -1,0 +1,94 @@
+---
+title: 'Combine BAL pools into one object'
+author:
+- name: Anson Wong
+  affiliation: Molecular Immunity, Murdoch Children's Research Institute
+date: "`r Sys.Date()`"
+description: null
+output: html_document
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+xaringanExtra::use_panelset()
+
+```
+
+# 1 Load packages
+
+```{r}
+suppressPackageStartupMessages({
+library(SingleCellExperiment)
+library(Seurat)
+library(here)
+})
+set.seed(1990)
+
+```
+
+# 2 Load data
+
+```{r}
+# load preprocessed objects
+sce1 <- readRDS(here("data","SCEs","preprocessed",paste0("BP1.preprocessed.SCE.rds")))
+sce2 <- readRDS(here("data","SCEs","preprocessed",paste0("BP2.preprocessed.SCE.rds")))
+sce3 <- readRDS(here("data","SCEs","preprocessed",paste0("Pi1.preprocessed.SCE.rds")))
+sce4 <- readRDS(here("data","SCEs","preprocessed",paste0("capture1.preprocessed.SCE.rds")))
+
+```
+
+# 3 Convert to Seurat object
+
+```{r}
+# set counts and gene names
+counts <- counts(sce1)
+rownames(counts) <- rowData(sce1)$Symbol
+seu1 <- CreateSeuratObject(counts=counts,
+                           meta.data = data.frame(colData(sce1)))
+counts <- counts(sce2)
+rownames(counts) <- rowData(sce2)$Symbol
+seu2 <- CreateSeuratObject(counts=counts,
+                           meta.data = data.frame(colData(sce2)))
+counts <- counts(sce3)
+rownames(counts) <- rowData(sce3)$Symbol
+seu3 <- CreateSeuratObject(counts=counts,
+                           meta.data = data.frame(colData(sce3)))
+counts <- counts(sce4)
+rownames(counts) <- rowData(sce4)$Symbol
+seu4 <- CreateSeuratObject(counts=counts,
+                           meta.data = data.frame(colData(sce4)))
+
+counts <- NULL
+
+# add experiment ID to metadata
+seu1 <- AddMetaData(seu1, factor("A"), col.name = "batchID")
+seu2 <- AddMetaData(seu2, factor("B"), col.name = "batchID")
+seu3 <- AddMetaData(seu3, factor("C"), col.name = "batchID")
+seu4 <- AddMetaData(seu4, factor("D"), col.name = "batchID")
+
+```
+
+# 4 Combine Seurat objects
+
+```{r}
+seu <- merge(
+  seu1,
+  y=c(seu2,seu3,seu4),
+  add.cell.ids = c("A","B","C","D"),
+  project="BAL")
+
+```
+
+# 5 Save objects
+
+```{r}
+out <- here("data",
+            "SCEs",
+            "preprocessed",
+            "bal_combined.preprocessed.SEU.rds")
+
+if(!file.exists(out)) saveRDS(seu, out)
+
+```

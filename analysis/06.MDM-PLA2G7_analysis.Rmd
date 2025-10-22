@@ -51,6 +51,9 @@ library(cowplot)
 library(ggrastr)
 library(data.table)
 library(gridExtra)
+library(purrr)
+library(readr)
+library(data.table)
 })
 set.seed(1990)
 
@@ -81,11 +84,11 @@ seu.ref <- CreateSeuratObject(seu@assays$RNA@counts, meta.data = metadata)
 
 ## 2.3 Set up colours
 ```{r}
-subtype.colours <- setNames(c("#ef476f", "#7209b7", "#ffd166", "#83c5be",
-                                 "#3a6ea5", "#9c6644", "#9e2a2b"),
-                               levels(seu.ref$orig.celltype))
-condition.colours <- setNames(c("#26547c","#ffd166","#ef476f"),
-                               levels(seu.ref$condition))
+subtype.colours <- setNames(c("#f2cc8f","#7209b7","#83c5be","#3a6ea5","#9e2a2b","#9c6644","#9a8c98"),
+                            c("Mono","MDM-IV","MDM-FABP4lo","MDM-FABP4hi","MDM-inflam","MDM-PLA2G7hi","IM"))
+
+Condition2.colours <- setNames(c("#26547c","#ef476f","#ffd166"),
+                               c("C","CFB","CFN"))
 ```
 
 
@@ -229,6 +232,9 @@ Gene sets from 4 studies were selected:
 
 ### 6.1.1 Prepare gene sets
 ```{r}
+# Present
+present.markers <- read.csv(here("data","RecM.markers.csv"))[,"MDM.PLA2G7hi"]
+
 # Li et al. 2022 [CF]
 li.markers <- read_excel(here("data","public_datasets","li","inline-supplementary-material-2.xls"))
 head(li.markers)
@@ -268,7 +274,8 @@ morrell.genesets <-
   data.frame() %>%
   dplyr::select(Cluster.0, Cluster.6) %>% unlist(use.names = FALSE)
 
-gene.sets <- list("Li"=head(li.genesets,50),
+gene.sets <- list("Present"=head(present.markers,50),
+                  "Li"=head(li.genesets,50),
                   "Wendisch"=wendisch.genesets,
                   "Liao"=head(liao.genesets,50),
                   "Morrell"=morrell.genesets)
@@ -276,28 +283,29 @@ gene.sets <- list("Li"=head(li.genesets,50),
 
 
 ### 6.1.2 Calculate gene set module score
-```{r fig.width=12, fig.height=6}
+```{r fig.width=15, fig.height=6}
 seu.orig <- seu # read the original RecM object
 seu.orig <- AddModuleScore(seu.orig, gene.sets)
 
-min.score <- min(unlist(seu.orig@meta.data[,paste0("Cluster",1:4)],use.names = FALSE))
-max.score <- max(unlist(seu.orig@meta.data[,paste0("Cluster",1:4)],use.names = FALSE))
+min.score <- min(unlist(seu.orig@meta.data[,paste0("Cluster",1:5)],use.names = FALSE))
+max.score <- max(unlist(seu.orig@meta.data[,paste0("Cluster",1:5)],use.names = FALSE))
 
-subtype.colours <- setNames(c("#ef476f", "#7209b7", "#ffd166", "#83c5be","#3a6ea5", "#9c6644", "#9e2a2b"), # ref
-                            levels(seu.orig$subtype))
-subtype.labels <- c("Mono", 
-                    "MDM-IV", 
-                    expression('MDM-'*italic('CCR2')^'+'),
-                    expression('MDM-'*italic('FABP4')^'low'),
-                    expression('MDM-'*italic('FABP4')^'high'),
-                    expression('MDM-'*italic('PLA2G7')^'high'),
+subtype.labels <- c("Mono","MDM-IV",
+                    expression('MDM-'*italic('FABP4')^'lo'),expression('MDM-'*italic('FABP4')^'hi'),
+                    "MDM-inflam",expression('MDM-'*italic('PLA2G7')^'hi'),
                     "IM")
 
 # feature plot of module score
-p1 <- FeaturePlot(seu.orig, c(paste0("Cluster",1:4)),
+title.list <- list(Cluster1=expression("Present study"),
+                   Cluster2=expression("Li"*italic(' et al.')),
+                   Cluster3=expression("Wendisch"*italic(' et al.')),
+                   Cluster4=expression("Liao"*italic(' et al.')),
+                   Cluster5=expression("Morrell"*italic(' et al.')))
+
+p1 <- FeaturePlot(seu.orig, c(paste0("Cluster",1:5)),
             slot = "data",
             #keep.scale = "feature",
-            ncol = 4,
+            ncol = 5,
             order = TRUE,
             raster=FALSE,
             pt.size =0.1) & 
@@ -318,12 +326,9 @@ p1 <- FeaturePlot(seu.orig, c(paste0("Cluster",1:4)),
         strip.text.x = element_text(face = "bold", vjust=2, size=12))
 
 # violin plot of module score per subtype
-title.list <- list(Cluster1=expression("Li"*italic('et al.')),
-                   Cluster2=expression("Wendisch"*italic('et al.')),
-                   Cluster3=expression("Liao"*italic('et al.')),
-                   Cluster4=expression("Morrell"*italic('et al.')))
+
 pt1.list <- list()
-for (cluster in paste0("Cluster",1:4)) {
+for (cluster in paste0("Cluster",1:5)) {
   p <- ggplot(seu.orig@meta.data, aes(x=subtype,y=!! sym(cluster))) +
         geom_jitter(mapping=aes(color = !! sym(cluster), alpha=0.5)) +
         geom_hline(yintercept = mean(unlist(seu.orig@meta.data[,cluster])),col = "#495057", size=1) +
@@ -332,7 +337,9 @@ for (cluster in paste0("Cluster",1:4)) {
         scale_x_discrete(label=subtype.labels) +
         scale_colour_gradientn(colours = rev(brewer.rdylbu(11))) +
         theme_classic() +
-        labs(title=title.list[[cluster]],x = NULL, y = "Score") +
+        labs(#title=title.list[[cluster]],
+          title=NULL,
+             x = NULL, y = "Score") +
         scale_y_continuous(limit=c(-0.5,1.2),breaks=c(-0.5,0,0.5,1),labels=c(-0.5,0,0.5,1)) +
         theme(plot.title = element_text(hjust = 0.5),
               #text=element_text(family="Arial"),
@@ -348,15 +355,53 @@ for (cluster in paste0("Cluster",1:4)) {
   pt1.list[[cluster]] <- p
 }
 
-p1 <- p1/(pt1.list[[1]] | pt1.list[[2]] | pt1.list[[3]] | pt1.list[[4]])
+p1 <- p1/(pt1.list[[1]] | pt1.list[[2]] | pt1.list[[3]] | pt1.list[[4]] | pt1.list[[5]])
 p1
 ```
 
 ### 6.1.3 One-sided wilcoxon test
 ```{r}
+seu_md <- seu.orig@meta.data
+clusters <- paste0("Cluster", 1:5)
+
+# Define mapping for cluster → Reference label
+ref_labels <- c(
+  "Cluster1" = "Present",
+  "Cluster2" = "Li",
+  "Cluster3" = "Wendisch",
+  "Cluster4" = "Liao",
+  "Cluster5" = "Morrell"
+)
+
+tests <- map_dfr(clusters, function(cl) {
+  seu_md %>%
+    wilcox_test(
+      reformulate("subtype", response = cl),
+      ref.group = "all",
+      alternative = "less",
+      exact = TRUE,
+      p.adjust.method = "BH",
+      detailed = TRUE
+    ) %>%
+    mutate(
+      Reference = ref_labels[[cl]],
+      `-log10_p` = ifelse(
+        is.infinite(-log10(p)),
+        ">300",
+        as.character(-log10(p))
+      ),
+      `-log10_p.adj` = ifelse(
+        is.infinite(-log10(p.adj)),
+        ">300",
+        as.character(-log10(p.adj))
+      )
+    )
+})
+tests %>% as.data.frame() %>% write.csv(file=here("data","Fig3A.stat.csv"))
+
 df <- split(seu.orig@meta.data, seu.orig$subtype)
 
-# Li
+# Present
 stat.test1 <- seu.orig@meta.data %>%
   wilcox_test(Cluster1 ~ subtype,
               ref.group = "all",
@@ -367,7 +412,7 @@ stat.test1 <- seu.orig@meta.data %>%
 
 -log10(stat.test1$p.adj)
 
-# Wendisch
+# Li
 stat.test2 <- seu.orig@meta.data %>%
   wilcox_test(Cluster2 ~ subtype,
               ref.group = "all",
@@ -376,9 +421,9 @@ stat.test2 <- seu.orig@meta.data %>%
               p.adjust.method = "BH",
               detailed = TRUE)
 
--log10(stat.test$p.adj)
+-log10(stat.test2$p.adj)
 
-# Liao
+# Wendisch
 stat.test3 <- seu.orig@meta.data %>%
   wilcox_test(Cluster3 ~ subtype,
               ref.group = "all",
@@ -387,9 +432,9 @@ stat.test3 <- seu.orig@meta.data %>%
               p.adjust.method = "BH",
               detailed = TRUE)
 
--log10(stat.test$p.adj)
+-log10(stat.test3$p.adj)
 
-# Morrell
+# Liao
 stat.test4 <- seu.orig@meta.data %>%
   wilcox_test(Cluster4 ~ subtype,
               ref.group = "all",
@@ -398,20 +443,180 @@ stat.test4 <- seu.orig@meta.data %>%
               p.adjust.method = "BH",
               detailed = TRUE)
 
--log10(stat.test$p.adj)
+-log10(stat.test4$p.adj)
 
-write.csv(stat.test1 %>% data.frame(), file=here("data","Li.stat.csv"))
-write.csv(stat.test2 %>% data.frame(), file=here("data","Wendisch.stat.csv"))
-write.csv(stat.test3 %>% data.frame(), file=here("data","Liao.stat.csv"))
-write.csv(stat.test4 %>% data.frame(), file=here("data","Morrell.stat.csv"))
+# Morrell
+stat.test5 <- seu.orig@meta.data %>%
+  wilcox_test(Cluster5 ~ subtype,
+              ref.group = "all",
+              alternative="less",
+              exact=TRUE,
+              p.adjust.method = "BH",
+              detailed = TRUE)
+
+-log10(stat.test5$p.adj)
+
+write.csv(stat.test1 %>% data.frame(), file=here("data","Present.stat.csv"))
+write.csv(stat.test2 %>% data.frame(), file=here("data","Li.stat.csv"))
+write.csv(stat.test3 %>% data.frame(), file=here("data","Wendisch.stat.csv"))
+write.csv(stat.test4 %>% data.frame(), file=here("data","Liao.stat.csv"))
+write.csv(stat.test5 %>% data.frame(), file=here("data","Morrell.stat.csv"))
 
 # write statistics
 setDT(seu.orig@meta.data)
 seu.orig@meta.data[, as.list(summary(dt)), by = subtype]
 
 tapply(seu.orig@meta.data$Cluster1, seu.orig@meta.data$subtype,summary) %>% data.frame() %>% apply(2,as.character) %>% write.csv(file=here("data","Fig3A.stat.csv"))
+
+# write summary
+# Start from meta
+md <- as.data.table(seu.orig@meta.data)
+
+# 1) Create a canonical group2 column
+if (!"group2" %in% names(md)) {
+  if ("Condition2" %in% names(md)) {
+    md[, group2 := as.character(Condition2)]
+  } else if ("subtype" %in% names(md)) {
+    md[, group2 := as.character(subtype)]
+  } else {
+    stop("No grouping column found: expected one of group2 / Condition2 / subtype.")
+  }
+}
+md[, group2 := trimws(group2)]
+
+# 2) Reference mapping
+ref_labels <- c(
+  "Cluster1" = "Present",
+  "Cluster2" = "Li",
+  "Cluster3" = "Wendisch",
+  "Cluster4" = "Liao",
+  "Cluster5" = "Morrell"
+)
+cols <- paste0("Cluster", 1:5)
+
+# 3) Long → add Reference → drop cluster → summary by (Reference, group2)
+summ_dt <- melt(
+  md,
+  id.vars = "group2",
+  measure.vars = cols,
+  variable.name = "cluster",
+  value.name = "value"
+)[, `:=`(
+  Reference = ref_labels[cluster]
+)][, c("cluster") := NULL
+][, as.list(summary(value)), by = .(Reference, group2)]
+
+# 4) Order: Reference then group2 (CFN, CFB, C)
+ref_order   <- c("Present", "Li", "Wendisch", "Liao", "Morrell")
+group_order <- c("CFN", "CFB", "C")
+
+summ_dt[, Reference := factor(Reference, levels = ref_order)]
+summ_dt[, group2    := factor(group2,    levels = group_order)]
+setorder(summ_dt, Reference, group2)
+
+# 5) Write out as Fig3A.stat.csv
+fwrite(summ_dt, here::here("data", "Fig3A_summary.csv"))
+
 ```
 
+```{r}
+# meta as data.table
+md <- as.data.table(seu.orig@meta.data)
+
+# RecM subset column (use the one you used in wilcox: 'subtype')
+if (!"subtype" %in% names(md)) stop("Expected column 'subtype' not found for RecM subset.")
+
+# Map cluster → Reference labels
+ref_labels <- c(
+  "Cluster1" = "Present",
+  "Cluster2" = "Li",
+  "Cluster3" = "Wendisch",
+  "Cluster4" = "Liao",
+  "Cluster5" = "Morrell"
+)
+
+# clusters to include
+clusters <- paste0("Cluster", 1:5)
+
+# desired output orders
+ref_order    <- c("Present", "Li", "Wendisch", "Liao", "Morrell")
+subset_order <- c("Mono","MDM-IV","MDM-FABP4lo","MDM-FABP4hi","MDM-inflam","MDM-PLA2G7hi","IM")
+
+## --- 1) Per-(Reference × RecM subset) summaries -------------------------
+
+# Long table of all cluster values, tagged with Reference
+long_dt <- melt(
+  md,
+  id.vars = "subtype",
+  measure.vars = clusters,
+  variable.name = "cluster",
+  value.name = "value"
+)[, `:=`(Reference = ref_labels[cluster])][, cluster := NULL][]
+
+# Summaries (Min, 1st Qu., Median, Mean, 3rd Qu., Max) by Reference × subset
+summ_dt <- long_dt[
+  , as.list(summary(value)), by = .(Reference, subtype)
+]
+
+# Rename to match your exact headers
+setnames(
+  summ_dt,
+  old = c("subtype", "Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."),
+  new = c("RecM subset", "Min", "1st Quatile", "Median", "Mean", "3rd Quatile", "Max value")
+)
+
+## --- 2) Wilcoxon tests per cluster (Reference) vs 'all' by subtype ------
+
+seu_md <- seu.orig@meta.data  # tibble/data.frame for rstatix
+
+tests <- map_dfr(clusters, function(cl) {
+  seu_md %>%
+    wilcox_test(
+      reformulate("subtype", response = cl),
+      ref.group = "all",
+      alternative = "less",
+      exact = TRUE,
+      p.adjust.method = "BH",
+      detailed = TRUE
+    ) %>%
+    mutate(
+      Reference = ref_labels[[cl]],
+      `-log10(p)` = ifelse(is.infinite(-log10(p)), ">300", as.character(-log10(p))),
+      `-log10(p.adj)` = ifelse(is.infinite(-log10(p.adj)), ">300", as.character(-log10(p.adj)))
+    ) %>%
+    dplyr::select(Reference, `RecM subset` = group2, `-log10(p)`, `-log10(p.adj)`)
+})
+
+## --- 3) Join summaries + p-values, order, and write ---------------------
+
+out <- as.data.table(summ_dt)[
+  as.data.table(tests),
+  on = .(Reference, `RecM subset`)
+]
+
+# Order rows
+out[, Reference := factor(Reference, levels = ref_order)]
+out[, `RecM subset` := factor(`RecM subset`, levels = subset_order)]
+setorder(out, Reference, `RecM subset`)
+
+# Select and order columns exactly as requested
+out <- out[, .(
+  Reference,
+  `RecM subset`,
+  Min,
+  `1st Quatile`,
+  Median,
+  `3rd Quatile`,
+  `Max value`,
+  Mean,
+  `-log10(p)`,
+  `-log10(p.adj)`
+)]
+
+# Write CSV
+fwrite(out, here("data", "RecM_summary_with_p.csv"))
+
+```
 
 
 ## 6.2 Prepare clustered object
@@ -421,8 +626,8 @@ seu@reductions$umap@cell.embeddings[,1] <- -seu@reductions$umap@cell.embeddings[
 seu@meta.data$orig.celltype[seu@meta.data$orig.ident == "Li" & seu@meta.data$orig.celltype == "Mono"] <- "Mono."
 
 # rename celltype
-seu$orig.celltype <- factor(seu$orig.celltype, levels=c("Mono","MDM-IV","MDM-CCR2+","MDM-FABP4low",
-                                                        "MDM-FABP4high","MDM-PLA2G7high","IM",
+seu$orig.celltype <- factor(seu$orig.celltype, levels=c("MDM-CCR2+","MDM-IV","MDM-FABP4low",
+                                                        "MDM-FABP4high","Mono","MDM-PLA2G7high","IM",
                                                         "Mono.","SPP1.IMs","FOLR2.IMs",
                                                         "Monocytes","Mono/Mφ","CD163/LGMN-Mφ"))
 # Split objects
@@ -430,8 +635,8 @@ seu$orig.celltype <- factor(seu$orig.celltype, levels=c("Mono","MDM-IV","MDM-CCR
 seu.ref <- subset(seu, orig.ident == "CF paed")
 seu.ref$orig.celltype <- fct_drop(seu.ref$orig.celltype)
 seu.ref$orig.celltype <- factor(seu.ref$orig.celltype,
-                                levels=c("Mono","MDM-IV","MDM-CCR2+","MDM-FABP4low",
-                                         "MDM-FABP4high","MDM-PLA2G7high","IM"))
+                                levels=c("MDM-CCR2+","MDM-IV","MDM-FABP4low",
+                                         "MDM-FABP4high","Mono","MDM-PLA2G7high","IM"))
 seu.ref$condition <- factor(seu.ref$condition, levels=c("HC","CFM","CFS"))
 
 ## Li et al.
@@ -451,9 +656,9 @@ dataset.colours <- setNames(c("#06948E","#C03830","#E7872B"),
                                levels(seu$orig.ident))
 dataset.labels <- c("Present study", "Li", "Wendisch")
 
-subtype.colours <- setNames(c("#ef476f", "#7209b7", "#ffd166", "#83c5be","#3a6ea5", "#9c6644", "#9e2a2b", # ref
-                              "#d81159","#b08968","#99ccff", # Li et al.
-                              "#ff002b","#f06900","#deab90" # Wendisch et al.
+subtype.colours <- setNames(c("#f2cc8f", "#7209b7", "#83c5be","#3a6ea5", "#9e2a2b", "#9c6644", "#9a8c98", # ref
+                              "#d81159","#b08968","#a480cf", # Li et al.
+                              "#ff002b","#218380","#deab90" # Wendisch et al.
                               ),
                                levels(seu$orig.celltype))
 ```
@@ -495,32 +700,32 @@ suppressWarnings(print(p2))
 
 ### 6.3.2 Split by datasets; grouped by celltype labels
 ```{r fig.height=3, fig.width=12}
-subtype.labels <- c("Mono", 
-                    "MDM-IV", 
-                    expression('MDM-'*italic('CCR2')^'+'),
-                    expression('MDM-'*italic('FABP4')^'low'),
-                    expression('MDM-'*italic('FABP4')^'high'),
-                    expression('MDM-'*italic('PLA2G7')^'high'),
-                    "IM",
-                    expression(italic('SPP1')*".IMs"),
-                    expression(italic('FOLR2')*".IMs"),
-                    "Monocytes",
-                    "Mono/Mφ",
-                    expression(italic("CD163")*"/"*italic("LGMN")*"-Mφ"))
-
-seu$orig.ident <- gsub("CF paed","Present study",seu$orig.ident)
-seu$orig.ident <- factor(seu$orig.ident, levels=c("Present study","Li","Wendisch"))
-dataset.colours <- setNames(c("#20a39e","#ef5b5b","#ffba49"),
-                               levels(seu$orig.ident))
+# subtype.labels <- c("Mono", 
+#                     "MDM-IV", 
+#                     expression('MDM-'*italic('CCR2')^'+'),
+#                     expression('MDM-'*italic('FABP4')^'low'),
+#                     expression('MDM-'*italic('FABP4')^'high'),
+#                     expression('MDM-'*italic('PLA2G7')^'high'),
+#                     "IM",
+#                     expression(italic('SPP1')*".IMs"),
+#                     expression(italic('FOLR2')*".IMs"),
+#                     "Monocytes",
+#                     "Mono/Mφ",
+#                     expression(italic("CD163")*"/"*italic("LGMN")*"-Mφ"))
+# 
+# seu$orig.ident <- gsub("CF paed","Present study",seu$orig.ident)
+# seu$orig.ident <- factor(seu$orig.ident, levels=c("Present study","Li","Wendisch"))
+# dataset.colours <- setNames(c("#20a39e","#ef5b5b","#ffba49"),
+#                                levels(seu$orig.ident))
 
 # ref
-subtype.colours <- setNames(c("#ef476f", "#7209b7", "#ffd166", "#83c5be","#3a6ea5", "#9c6644", "#9e2a2b"), # ref
-                            levels(seu.ref$orig.celltype))
+# subtype.colours <- setNames(c("#f2cc8f", "#7209b7", "#83c5be", "#3a6ea5","#9e2a2b", "#9c6644", "#9a8c98"), # ref
+#                             levels(seu.ref$orig.celltype))
 subtype.labels <- c("Mono", 
                     "MDM-IV", 
-                    expression('MDM-'*italic('CCR2')^'+'),
                     expression('MDM-'*italic('FABP4')^'low'),
                     expression('MDM-'*italic('FABP4')^'high'),
+                    "MDM-inflam",
                     expression('MDM-'*italic('PLA2G7')^'high'),
                     "IM")
 
@@ -551,8 +756,8 @@ ps1 <- DimPlot(seu.ref,
   scale_color_manual(values=subtype.colours, labels = subtype.labels)
 
 # Li
-subtype.colours <- setNames(c("#d81159", "#b08968","#a480cf"), # Li et al.
-                            levels(seu.li$orig.celltype))
+# subtype.colours <- setNames(c("#d81159", "#b08968","#a480cf"), # Li et al.
+#                             levels(seu.li$orig.celltype))
 subtype.labels <- c("Mono", 
                     expression(italic('SPP1')*".IMs"),
                     expression(italic('FOLR2')*".IMs"))
@@ -584,8 +789,8 @@ ps2 <- DimPlot(seu.li,
   scale_color_manual(values=subtype.colours, labels = subtype.labels)
 
 # Wendisch
-subtype.colours <- setNames(c("#ff002b","#218380","#deab90"), # Wendisch et al.
-                            levels(seu.wendisch$orig.celltype))
+# subtype.colours <- setNames(c("#ff002b","#218380","#deab90"), # Wendisch et al.
+#                             levels(seu.wendisch$orig.celltype))
 subtype.labels <- c("Monocytes",
                     "Mono/Mφ",
                     expression(italic("CD163")*"/"*italic("LGMN")*"-Mφ"))
@@ -693,11 +898,17 @@ p4
 
 ## 6.4 Feature violin plot
 ```{r}
+subtype.colours <- setNames(c("#f2cc8f", "#7209b7", "#83c5be","#3a6ea5", "#9e2a2b", "#9c6644", "#9a8c98", # ref
+                              "#d81159","#b08968","#99ccff", # Li et al.
+                              "#ff002b","#f06900","#deab90" # Wendisch et al.
+                              ),
+                               levels(seu$orig.celltype))
+
 subtype.labels <- c("Mono", 
                     "MDM-IV", 
-                    expression('MDM-'*italic('CCR2')^'+'),
                     expression('MDM-'*italic('FABP4')^'low'),
                     expression('MDM-'*italic('FABP4')^'high'),
+                    "MDM-inflam",
                     expression('MDM-'*italic('PLA2G7')^'high'),
                     "IM",
                     "Mono",
@@ -758,7 +969,7 @@ showtext::showtext_auto()
 showtext::showtext_opts(dpi = 1600)
 
 # gene set enrichment score
-layout = "AAAAAAAA\nBBCCDDEE"
+layout = "AAAAAAAAAA\nBBCCDDEEFF"
 p1 +
   #plot_layout(design = layout) +
   theme(plot.tag = element_text(size = 14, face = "bold", family="Arial"))
@@ -768,7 +979,7 @@ ggsave(plot=last_plot(),
        dpi=1600,
        filename = paste0(out,"/","public.geneSetScore.jpeg"),
        height=6,
-       width=12)
+       width=15)
 
 # umap grouped by dataset
 p2 +
